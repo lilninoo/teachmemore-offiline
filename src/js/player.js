@@ -417,131 +417,221 @@ async loadLesson(lessonId) {
 
 
 
-// Modifier aussi la fonction loadVideo pour gérer les fichiers chiffrés
+// loadVideo pour gérer les fichiers chiffrés
+
 async loadVideo() {
-    console.log('[Player] Chargement de la vidéo...');
+    console.log('[Player] ==> loadVideo() appelé');
+    console.log('[Player] État actuel:', {
+        hasVideoElement: !!PlayerState.videoElement,
+        hasCurrentLesson: !!PlayerState.currentLesson,
+        lessonId: PlayerState.currentLesson?.lesson_id,
+        lessonType: PlayerState.currentLesson?.type
+    });
     
     const video = PlayerState.videoElement;
-    const documentViewer = document.getElementById('document-viewer');
-    
     if (!video) {
         console.error('[Player] Élément vidéo non trouvé');
+        this.showError('Élément vidéo non trouvé');
         return;
     }
-    
+
     if (!PlayerState.currentLesson) {
         console.error('[Player] Aucune leçon sélectionnée');
+        this.showError('Aucune leçon sélectionnée');
         return;
     }
-    
-    // Afficher la vidéo, cacher le document
+
+    // S'assurer que la vidéo est visible
     video.style.display = 'block';
+    video.style.visibility = 'visible';
+    video.style.opacity = '1';
     video.classList.remove('hidden');
-    documentViewer?.classList.add('hidden');
-    
-    // Réafficher les contrôles vidéo
-    const videoControls = document.getElementById('video-controls');
-    if (videoControls) {
-        videoControls.style.display = 'block';
+
+    const videoWrapper = document.getElementById('video-wrapper');
+    if (videoWrapper) {
+        videoWrapper.style.display = 'block';
+        videoWrapper.classList.remove('hidden');
     }
     
-    // Réinitialiser
+    // Afficher le loader
     this.showLoading();
+    
+    // Réinitialiser la vidéo
     video.pause();
+    video.removeAttribute('src');
+    video.load();
     
-    // Déterminer le chemin de la vidéo
-    let videoPath = PlayerState.currentLesson.file_path;
-    
-    if (!videoPath) {
-        console.error('[Player] Aucun chemin vidéo trouvé pour la leçon');
-        this.hideLoading();
-        this.displayNoMediaMessage();
-        return;
-    }
-    
-    console.log('[Player] Chemin vidéo:', videoPath);
-    
-    // IMPORTANT: Si nous avons un SecureMediaPlayer, l'utiliser pour déchiffrer
-    if (window.electronAPI && window.electronAPI.media && window.electronAPI.media.createStreamUrl) {
-        try {
-            console.log('[Player] Utilisation du SecureMediaPlayer pour le déchiffrement');
-            
-            // Créer une URL de streaming sécurisée
-            const streamUrl = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
-            console.log('[Player] URL de streaming créée:', streamUrl);
-            
-            video.src = streamUrl;
-        } catch (error) {
-            console.error('[Player] Erreur lors de la création de l\'URL de streaming:', error);
-            // Fallback : essayer de lire le fichier directement (ne fonctionnera pas si chiffré)
-            video.src = `file://${videoPath}`;
-        }
-    } else {
-        // Fallback : utiliser le chemin direct
-        console.warn('[Player] SecureMediaPlayer non disponible, lecture directe');
-        if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
-            video.src = `file://${videoPath}`;
-        } else {
-            video.src = videoPath;
-        }
-    }
-    
-    console.log('[Player] Source vidéo définie:', video.src);
-    
-    // Charger les sous-titres si disponibles
-    if (PlayerState.currentLesson.subtitle_path) {
-        const track = document.createElement('track');
-        track.kind = 'subtitles';
-        track.label = 'Français';
-        track.srclang = 'fr';
-        track.src = `file://${PlayerState.currentLesson.subtitle_path}`;
-        track.default = PlayerState.subtitlesEnabled;
+    try {
+        // Déterminer le chemin de la vidéo
+        let videoPath = null;
         
-        // Retirer les anciennes pistes
-        video.querySelectorAll('track').forEach(t => t.remove());
-        video.appendChild(track);
-    }
-    
-    // Appliquer les paramètres
-    video.playbackRate = PlayerState.playbackRate;
-    video.volume = PlayerState.volume;
-    video.muted = PlayerState.isMuted;
-    
-    // Écouter l'événement loadeddata pour masquer le loader
-    video.addEventListener('loadeddata', () => {
-        this.hideLoading();
-        console.log('[Player] Vidéo chargée avec succès');
-    }, { once: true });
-    
-    // Écouter l'événement error
-    video.addEventListener('error', (e) => {
-        this.hideLoading();
-        console.error('[Player] Erreur de chargement vidéo:', e);
-        console.error('[Player] Code erreur:', video.error?.code);
-        console.error('[Player] Message erreur:', video.error?.message);
-        
-        // Afficher un message d'erreur détaillé
-        let errorMessage = 'Erreur lors du chargement de la vidéo';
-        if (video.error) {
-            switch (video.error.code) {
-                case 1:
-                    errorMessage = 'Le chargement de la vidéo a été abandonné';
-                    break;
-                case 2:
-                    errorMessage = 'Erreur réseau lors du chargement';
-                    break;
-                case 3:
-                    errorMessage = 'Erreur de décodage de la vidéo';
-                    break;
-                case 4:
-                    errorMessage = 'Format vidéo non supporté ou fichier introuvable';
-                    break;
+        if (PlayerState.currentLesson.file_path) {
+            videoPath = PlayerState.currentLesson.file_path;
+        } else if (PlayerState.currentLesson.video_url) {
+            videoPath = PlayerState.currentLesson.video_url;
+        } else if (PlayerState.currentLesson.media_url) {
+            videoPath = PlayerState.currentLesson.media_url;
+        } else if (PlayerState.currentLesson.media && Array.isArray(PlayerState.currentLesson.media)) {
+            const videoMedia = PlayerState.currentLesson.media.find(m => 
+                m.type === 'video' || m.mime_type?.startsWith('video/')
+            );
+            if (videoMedia) {
+                videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
             }
         }
         
+        if (!videoPath) {
+            throw new Error('Aucun chemin vidéo trouvé pour cette leçon');
+        }
+        
+        console.log('[Player] Chemin vidéo trouvé:', videoPath);
+        
+        // Utiliser le SecureMediaHandler pour obtenir l'URL de streaming
+        let streamUrl;
+        
+        if (window.secureMediaHandler) {
+            console.log('[Player] Utilisation du SecureMediaHandler');
+            streamUrl = await window.secureMediaHandler.createStreamUrl(videoPath, 'video/mp4');
+        } else {
+            console.warn('[Player] SecureMediaHandler non disponible, utilisation directe');
+            streamUrl = videoPath.startsWith('http') ? videoPath : `file://${videoPath}`;
+        }
+        
+        console.log('[Player] URL de streaming finale:', streamUrl);
+        
+        // Configurer les événements avant de définir la source
+        const loadedDataHandler = () => {
+            console.log('[Player] ✓ Vidéo chargée avec succès');
+            this.hideLoading();
+            
+            // Afficher les contrôles
+            const videoControls = document.getElementById('video-controls');
+            if (videoControls) {
+                videoControls.style.display = 'flex';
+            }
+            
+            // Appliquer les paramètres sauvegardés
+            video.volume = PlayerState.volume;
+            video.playbackRate = PlayerState.playbackRate;
+            video.muted = PlayerState.isMuted;
+            
+            // Auto-play si activé
+            if (PlayerState.autoplay && video.paused) {
+                video.play().catch(err => {
+                    console.warn('[Player] Auto-play bloqué:', err);
+                });
+            }
+        };
+        
+        const errorHandler = (e) => {
+            console.error('[Player] ❌ Erreur de chargement vidéo:', e);
+            this.hideLoading();
+            
+            const error = video.error;
+            let errorMessage = 'Erreur lors du chargement de la vidéo';
+            
+            if (error) {
+                switch (error.code) {
+                    case 1:
+                        errorMessage = 'Le chargement a été interrompu';
+                        break;
+                    case 2:
+                        errorMessage = 'Erreur réseau - Vérifiez votre connexion';
+                        break;
+                    case 3:
+                        errorMessage = 'Erreur de décodage - Le fichier peut être corrompu';
+                        break;
+                    case 4:
+                        errorMessage = 'Format non supporté ou fichier introuvable';
+                        break;
+                }
+            }
+            
+            this.showError(errorMessage);
+            this.displayNoMediaMessage();
+        };
+        
+        // Attacher les événements
+        video.addEventListener('loadeddata', loadedDataHandler, { once: true });
+        video.addEventListener('error', errorHandler, { once: true });
+        
+        // Charger la vidéo
+        video.src = streamUrl;
+        video.load();
+        
+        // Charger les sous-titres si disponibles
+        if (PlayerState.currentLesson.subtitle_path) {
+            this.loadSubtitles(PlayerState.currentLesson.subtitle_path);
+        }
+        
+    } catch (error) {
+        console.error('[Player] Erreur lors du chargement:', error);
+        this.hideLoading();
+        this.showError(error.message);
         this.displayNoMediaMessage();
-        showError(errorMessage);
-    }, { once: true });
+    }
+},
+
+// Ajouter une méthode pour afficher les erreurs
+showError(message) {
+    console.error('[Player]', message);
+    
+    // Utiliser la fonction globale si disponible
+    if (window.showError) {
+        window.showError(message);
+    }
+    
+    // Afficher aussi dans l'interface du player
+    const errorOverlay = document.createElement('div');
+    errorOverlay.className = 'player-error-overlay';
+    errorOverlay.innerHTML = `
+        <div class="player-error-content">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/>
+            </svg>
+            <h3>Erreur de lecture</h3>
+            <p>${this.escapeHtml(message)}</p>
+            <button onclick="playerManager.retryLoad()" class="btn btn-primary">
+                Réessayer
+            </button>
+        </div>
+    `;
+    
+    const videoWrapper = document.getElementById('video-wrapper');
+    if (videoWrapper) {
+        // Supprimer l'ancienne erreur si elle existe
+        const oldError = videoWrapper.querySelector('.player-error-overlay');
+        if (oldError) oldError.remove();
+        
+        videoWrapper.appendChild(errorOverlay);
+        
+        // Supprimer après 10 secondes
+        setTimeout(() => errorOverlay.remove(), 10000);
+    }
+},
+
+// Ajouter une méthode pour charger les sous-titres
+loadSubtitles(subtitlePath) {
+    const video = PlayerState.videoElement;
+    if (!video) return;
+    
+    // Supprimer les anciennes pistes
+    video.querySelectorAll('track').forEach(track => track.remove());
+    
+    // Créer la nouvelle piste
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = 'Français';
+    track.srclang = 'fr';
+    track.src = subtitlePath.startsWith('http') ? subtitlePath : `file://${subtitlePath}`;
+    track.default = PlayerState.subtitlesEnabled;
+    
+    video.appendChild(track);
+    
+    // Activer/désactiver selon les préférences
+    if (video.textTracks.length > 0) {
+        video.textTracks[0].mode = PlayerState.subtitlesEnabled ? 'showing' : 'hidden';
+    }
 },
 
 
@@ -716,6 +806,14 @@ async loadVideo() {
                                                 <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
                                             </svg>
                                         </button>
+
+                                        <!-- Navigation entre leçons -->
+                                        <button class="control-btn" onclick="playerManager.loadPreviousLesson()" 
+                                                title="Leçon précédente (Shift+P)">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+                                            </svg>
+                                        </button>
                                         
                                         <!-- Skip buttons -->
                                         <button class="control-btn" onclick="playerManager.skipBackward()" title="Reculer de 10s (←)">
@@ -726,6 +824,13 @@ async loadVideo() {
                                         <button class="control-btn" onclick="playerManager.skipForward()" title="Avancer de 10s (→)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
+                                            </svg>
+                                        </button>
+                                        
+                                        <button class="control-btn" onclick="playerManager.loadNextLesson()" 
+                                                title="Leçon suivante (Shift+N)">
+                                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
                                             </svg>
                                         </button>
                                         
@@ -1022,7 +1127,7 @@ async loadVideo() {
             const playerPage = document.getElementById('player-page');
             if (!playerPage || playerPage.classList.contains('hidden')) return;
             
-            switch(e.key.toLowerCase()) {
+            switch (e.key.toLowerCase()) {
                 case ' ':
                 case 'k':
                     e.preventDefault();
@@ -1057,16 +1162,26 @@ async loadVideo() {
                     this.toggleSubtitles();
                     break;
                 case 'p':
-                    e.preventDefault();
-                    this.togglePiP();
+                    if (e.shiftKey) {
+                        e.preventDefault();
+                        this.loadPreviousLesson();
+                    } else {
+                        e.preventDefault();
+                        this.togglePiP();
+                    }
                     break;
                 case 'b':
                     e.preventDefault();
                     this.addBookmark();
                     break;
                 case 'n':
-                    e.preventDefault();
-                    this.addNote();
+                    if (e.shiftKey) {
+                        e.preventDefault();
+                        this.loadNextLesson();
+                    } else {
+                        e.preventDefault();
+                        this.addNote();
+                    }
                     break;
                 case 't':
                     e.preventDefault();
@@ -1104,6 +1219,7 @@ async loadVideo() {
             }
         });
     },
+
     
     // Gestes tactiles
     initGestures() {
@@ -2361,6 +2477,127 @@ async loadVideo() {
            this.showCourseCompletion();
        }
    },
+
+   // Ajouter ces méthodes dans playerManager après loadNextLesson (ligne ~3000)
+
+// Créer les boutons de navigation
+createNavigationControls() {
+    return `
+        <!-- Navigation entre leçons -->
+        <button class="control-btn" onclick="playerManager.loadPreviousLesson()" 
+                title="Leçon précédente (Shift+P)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
+            </svg>
+        </button>
+        <button class="control-btn" onclick="playerManager.loadNextLesson()" 
+                title="Leçon suivante (Shift+N)">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
+            </svg>
+        </button>
+    `;
+},
+
+// Mettre à jour loadPreviousLesson pour être plus robuste
+async loadPreviousLesson() {
+    try {
+        const allLessons = this.getAllLessonsFlat();
+        const currentIndex = allLessons.findIndex(l => l.lesson_id === PlayerState.currentLesson.lesson_id);
+        
+        if (currentIndex > 0) {
+            // Sauvegarder la progression actuelle
+            await this.saveProgress();
+            
+            // Charger la leçon précédente
+            const previousLesson = allLessons[currentIndex - 1];
+            await this.loadLesson(previousLesson.lesson_id);
+            
+            showInfo(`Leçon précédente: ${previousLesson.title}`);
+        } else {
+            showInfo('Vous êtes à la première leçon');
+        }
+    } catch (error) {
+        console.error('[Player] Erreur lors du chargement de la leçon précédente:', error);
+        this.showError('Impossible de charger la leçon précédente');
+    }
+},
+
+// Mettre à jour loadNextLesson pour être plus robuste
+async loadNextLesson() {
+    try {
+        const allLessons = this.getAllLessonsFlat();
+        const currentIndex = allLessons.findIndex(l => l.lesson_id === PlayerState.currentLesson.lesson_id);
+        
+        if (currentIndex < allLessons.length - 1) {
+            // Sauvegarder la progression actuelle
+            await this.saveProgress();
+            
+            // Charger la leçon suivante
+            const nextLesson = allLessons[currentIndex + 1];
+            await this.loadLesson(nextLesson.lesson_id);
+            
+            showInfo(`Leçon suivante: ${nextLesson.title}`);
+        } else {
+            showInfo('Félicitations ! Vous avez terminé ce cours.');
+            this.showCourseCompletion();
+        }
+    } catch (error) {
+        console.error('[Player] Erreur lors du chargement de la leçon suivante:', error);
+        this.showError('Impossible de charger la leçon suivante');
+    }
+},
+
+// Helper pour obtenir toutes les leçons dans l'ordre
+getAllLessonsFlat() {
+    const allLessons = [];
+    PlayerState.sections.forEach(section => {
+        const lessons = PlayerState.lessons.get(section.section_id) || [];
+        allLessons.push(...lessons);
+    });
+    return allLessons;
+},
+
+// Afficher l'écran de fin de cours
+showCourseCompletion() {
+    const completionHTML = `
+        <div class="course-completion-overlay">
+            <div class="completion-content">
+                <div class="completion-icon">🎉</div>
+                <h2>Félicitations !</h2>
+                <p>Vous avez terminé le cours "${PlayerState.currentCourse.title}"</p>
+                <div class="completion-stats">
+                    <div class="stat">
+                        <span class="stat-value">${this.getAllLessonsFlat().length}</span>
+                        <span class="stat-label">Leçons complétées</span>
+                    </div>
+                    <div class="stat">
+                        <span class="stat-value">${this.formatTime(PlayerState.totalWatchTime / 1000)}</span>
+                        <span class="stat-label">Temps total</span>
+                    </div>
+                </div>
+                <div class="completion-actions">
+                    <button class="btn btn-secondary" onclick="playerManager.exitPlayer()">
+                        Retour aux cours
+                    </button>
+                    <button class="btn btn-primary" onclick="playerManager.downloadCertificate()">
+                        Télécharger le certificat
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    const videoWrapper = document.getElementById('video-wrapper');
+    if (videoWrapper) {
+        videoWrapper.insertAdjacentHTML('beforeend', completionHTML);
+    }
+},
+
+// Télécharger le certificat (placeholder)
+async downloadCertificate() {
+    showInfo('La génération de certificat sera disponible prochainement');
+},
    
    // Charger la leçon précédente
    async loadPreviousLesson() {
