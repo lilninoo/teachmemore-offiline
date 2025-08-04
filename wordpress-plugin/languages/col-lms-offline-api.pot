@@ -1,0 +1,304 @@
+# COL LMS Offline API - Template de traduction
+# Copyright (C) 2024 Votre Nom
+# This file is distributed under the same license as the COL LMS Offline API package.
+msgid ""
+msgstr ""
+"Project-Id-Version: COL LMS Offline API 1.0.0\n"
+"Report-Msgid-Bugs-To: https://support.votre-site.com/\n"
+"POT-Creation-Date: 2024-01-15 10:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
+
+#: learnpress-offline-api.php:94
+msgid "Le plugin %s est requis pour utiliser COL LMS Offline API."
+msgstr ""
+
+#: learnpress-offline-api.php:100
+msgid "PHP version %s ou supérieure est requise. Version actuelle: %s"
+msgstr ""
+
+#: learnpress-offline-api.php:109
+msgid "L'extension PHP %s est requise."
+msgstr ""
+
+#: learnpress-offline-api.php:125
+msgid "Les dépendances requises ne sont pas satisfaites."
+msgstr ""
+
+#: learnpress-offline-api.php:263
+msgid "Paramètres"
+msgstr ""
+
+#: learnpress-offline-api.php:275
+msgid "Documentation"
+msgstr ""
+
+#: learnpress-offline-api.php:280
+msgid "Support"
+msgstr ""
+
+#: learnpress-offline-api.php:296
+msgid "COL LMS Offline API activé avec succès !"
+msgstr ""
+
+#: learnpress-offline-api.php:298
+msgid "Configurer maintenant"
+msgstr ""
+
+#: learnpress-offline-api.php:304
+msgid "COL LMS API"
+msgstr ""
+
+#: learnpress-offline-api.php:305
+msgid "HTTPS est fortement recommandé pour sécuriser les communications API."
+msgstr ""
+
+#: learnpress-offline-api.php:312
+msgid "Paid Memberships Pro est requis mais non détecté."
+msgstr ""
+
+#: includes/class-auth.php:125
+msgid "Trop de tentatives de connexion. Veuillez réessayer plus tard."
+msgstr ""
+
+#: includes/class-auth.php:136
+msgid "Nom d'utilisateur ou mot de passe incorrect."
+msgstr ""
+
+#: includes/class-auth.php:149
+msgid "Vous n'avez pas la permission d'utiliser l'API."
+msgstr ""
+
+#: includes/class-auth.php:157
+msgid "Un abonnement actif est requis pour utiliser l'application."
+msgstr ""
+
+#: includes/class-auth.php:165
+msgid "Nombre maximum d'appareils (%d) atteint. Supprimez un appareil existant."
+msgstr ""
+
+#: includes/class-auth.php:230
+msgid "Token de rafraîchissement invalide ou expiré."
+msgstr ""
+
+#: includes/class-auth.php:236
+msgid "Utilisateur non trouvé."
+msgstr ""
+
+#: includes/class-auth.php:244
+msgid "Votre abonnement a expiré."
+msgstr ""
+
+#: includes/class-auth.php:301
+msgid "%d appareils déconnectés."
+msgstr ""
+
+#: includes/class-auth.php:324
+msgid "Déconnexion réussie."
+msgstr ""
+
+#: includes/class-auth.php:366
+msgid "Appareil sans nom"
+msgstr ""
+
+#: includes/class-auth.php:397
+msgid "Appareil révoqué avec succès."
+msgstr ""
+
+#: includes/class-auth.php:401
+msgid "Appareil non trouvé."
+msgstr ""
+
+#: includes/class-auth.php:415
+msgid "Accès standard"
+msgstr ""
+
+#: includes/class-auth.php:441
+msgid "Aucun abonnement"
+msgstr ""
+
+#: includes/class-admin.php:76
+msgid "LMS Offline API"
+msgstr ""
+
+#: includes/class-admin.php:86
+msgid "Tableau de bord"
+msgstr ""
+
+#: includes/class-admin.php:95
+msgid "Paramètres"
+msgstr ""
+
+#: includes/class-admin.php:104
+msgid "Activité"
+msgstr ""
+
+#: includes/class-admin.php:113
+msgid "Documentation"
+msgstr ""
+
+#: includes/class-admin.php:166
+msgid "Êtes-vous sûr de vouloir supprimer tous les tokens ?"
+msgstr ""
+
+#: includes/class-admin.php:167
+msgid "Test réussi !"
+msgstr ""
+
+#: includes/class-admin.php:168
+msgid "Test échoué"
+msgstr ""
+
+#: includes/class-admin.php:185
+msgid "Statut de l'API"
+msgstr ""
+
+#: includes/class-admin.php:189
+msgid "API Active"
+msgstr ""
+
+#: includes/class-admin.php:192
+msgid "API Inactive"
+msgstr ""
+
+#: includes/class-admin.php:196
+msgid "URL de l'API:"
+msgstr ""
+
+#: includes/class-admin.php:203
+msgid "Utilisateurs actifs"
+msgstr ""
+
+#: includes/class-admin.php:205
+msgid "Avec tokens valides"
+msgstr ""
+
+#: includes/class-admin.php:209
+msgid "Appareils connectés"
+msgstr ""
+
+#: includes/class-admin.php:211
+msgid "Total des appareils"
+msgstr ""
+
+#: includes/class-admin.php:215
+msgid "Téléchargements"
+msgstr ""
+
+#: includes/class-admin.php:217
+msgid "Ce mois-ci"
+msgstr ""
+
+#: includes/class-admin.php:221
+msgid "Synchronisations"
+msgstr ""
+
+#: includes/class-admin.php:223
+msgid "Dernières 24h"
+msgstr ""
+
+#: includes/class-admin.php:229
+msgid "Activité API (7 derniers jours)"
+msgstr ""
+
+#: includes/class-admin.php:234
+msgid "Cours les plus téléchargés"
+msgstr ""
+
+#: includes/class-admin.php:240
+msgid "Connexions récentes"
+msgstr ""
+
+#: includes/class-admin.php:244
+msgid "Utilisateur"
+msgstr ""
+
+#: includes/class-admin.php:245
+msgid "Appareil"
+msgstr ""
+
+#: includes/class-admin.php:246
+msgid "Dernière activité"
+msgstr ""
+
+#: includes/class-admin.php:247
+msgid "Actions"
+msgstr ""
+
+#: includes/class-admin.php:254
+msgid "Utilisateur supprimé"
+msgstr ""
+
+#: includes/class-admin.php:257
+msgid "ago"
+msgstr ""
+
+#: includes/class-admin.php:260
+msgid "Révoquer"
+msgstr ""
+
+#: includes/class-admin.php:268
+msgid "Actions rapides"
+msgstr ""
+
+#: includes/class-admin.php:271
+msgid "Tester l'API"
+msgstr ""
+
+#: includes/class-admin.php:274
+msgid "Nettoyer les tokens expirés"
+msgstr ""
+
+#: includes/class-admin.php:277
+msgid "Exporter les statistiques"
+msgstr ""
+
+#: includes/class-courses.php:195
+msgid "Vous n'avez pas accès à ce cours."
+msgstr ""
+
+#: includes/class-courses.php:201
+msgid "Cours non trouvé."
+msgstr ""
+
+#: includes/class-courses.php:233
+msgid "Package en cours de création."
+msgstr ""
+
+#: includes/class-courses.php:252
+msgid "Vous n'avez pas accès à cette leçon."
+msgstr ""
+
+#: includes/class-courses.php:258
+msgid "Leçon non trouvée."
+msgstr ""
+
+#: includes/class-logger.php:177
+msgid "Toutes les 5 minutes"
+msgstr ""
+
+#: admin/js/admin.js:15
+msgid "Test en cours..."
+msgstr ""
+
+#: admin/js/admin.js:22
+msgid "Nettoyage..."
+msgstr ""
+
+#: admin/js/admin.js:28
+msgid "Export en cours..."
+msgstr ""
+
+#: admin/js/admin.js:34
+msgid "Révocation..."
+msgstr ""
+
+#: uninstall.php:65
+msgid "Plugin désinstallé - toutes les données supprimées"
+msgstr ""

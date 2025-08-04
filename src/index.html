@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; media-src 'self' file: http://127.0.0.1:*; img-src 'self' data: https:;">
+  <title>Teachmemore Offline</title>
+  <link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+  <!-- Login Page -->
+  <div id="login-page" class="page active">
+    <div class="login-container">
+      <div class="login-box">
+        <div class="login-header">
+          <div class="login-logo">
+            <!-- Logo SVG -->
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z"/>
+              <path d="M2 17L12 22L22 17"/>
+              <path d="M2 12L12 17L22 12"/>
+            </svg>
+          </div>
+          <h1 class="app-title">Teachmemore</h1>
+          <p class="app-subtitle">Apprentissage hors ligne</p>
+        </div>
+
+        <form id="login-form">
+          <div class="form-group">
+            <label for="api-url">URL du site WordPress</label>
+            <input type="url" id="api-url" class="form-control" placeholder="https://votre-site.com" required />
+          </div>
+          <div class="form-group">
+            <label for="username">Nom d'utilisateur</label>
+            <input type="text" id="username" class="form-control" placeholder="votre-nom-utilisateur" required />
+          </div>
+          <div class="form-group">
+            <label for="password">Mot de passe</label>
+            <input type="password" id="password" class="form-control" placeholder="••••••••" required />
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="remember-me" />
+              Se souvenir de moi
+            </label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block" id="login-btn">
+            <span class="btn-text">Se connecter</span>
+            <span class="btn-loader hidden">
+              <span class="spinner spinner-small"></span> Connexion...
+            </span>
+          </button>
+          <button type="button" class="btn btn-icon" id="settings-btn-login" title="Paramètres">
+            <!-- Settings icon -->
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+            </svg>
+          </button>
+        </form>
+        <div id="login-error" class="message message-error hidden"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Page -->
+  <div id="dashboard-page" class="page hidden">
+    <div class="app-container">
+      <!-- Header -->
+      <header class="app-header">
+        <div class="header-left">
+          <button class="btn btn-icon" id="menu-toggle">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
+            </svg>
+          </button>
+          <h1 class="header-title">LearnPress Offline</h1>
+          <span class="user-info">Bonjour, <span id="user-display-name">Utilisateur</span></span>
+        </div>
+        <div class="header-right">
+          <button class="btn btn-icon" id="search-btn" title="Rechercher">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            </svg>
+          </button>
+          <button class="btn btn-icon" id="sync-btn" title="Synchroniser">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+            </svg>
+          </button>
+          <button class="btn btn-icon" id="settings-btn-dashboard" title="Paramètres">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61 l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41 h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87 C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58 c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54 c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96 c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6 s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"/>
+            </svg>
+          </button>
+          <button class="btn btn-icon" id="logout-btn" title="Déconnexion">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Search Bar -->
+      <div id="search-bar" class="search-bar hidden">
+        <input type="text" id="search-input" class="form-control" placeholder="Rechercher un cours..." />
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+          <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="dashboard">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/>
+              </svg>
+              <span>Tableau de bord</span>
+            </a>
+            <a href="#" class="nav-item" data-page="courses">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
+              </svg>
+              <span>Mes cours</span>
+              <span class="nav-badge" id="courses-count">0</span>
+            </a>
+            <a href="#" class="nav-item" data-page="downloads">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+              </svg>
+              <span>Téléchargements</span>
+            </a>
+            <a href="#" class="nav-item" data-page="progress">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+              </svg>
+              <span>Progression</span>
+            </a>
+          </nav>
+          <div class="sidebar-footer">
+            <div class="storage-info">
+              <div class="storage-label">Espace utilisé</div>
+              <div class="storage-bar">
+                <div class="storage-bar-fill" id="storage-bar" style="width: 0%;"></div>
+              </div>
+              <div class="storage-text" id="storage-text">0 MB / 5 GB</div>
+            </div>
+          </div>
+        </aside>
+
+        <!-- Content Area -->
+        <div class="content-area">
+          <!-- Dashboard Content -->
+          <div class="content-page" id="dashboard-content">
+            <div class="content-header">
+              <h2 id="page-title">Tableau de bord</h2>
+              <button class="btn btn-primary" id="download-course-btn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                Télécharger un cours
+              </button>
+            </div>
+            <div class="stats-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:20px;margin-bottom:30px;">
+              <div class="stat-card card">
+                <div class="card-body">
+                  <h3 id="stat-courses" style="font-size:32px;margin:0;">0</h3>
+                  <p style="margin:5px 0 0;color:var(--text-secondary);">Cours téléchargés</p>
+                </div>
+              </div>
+              <div class="stat-card card">
+                <div class="card-body">
+                  <h3 id="stat-completed" style="font-size:32px;margin:0;">0</h3>
+                  <p style="margin:5px 0 0;color:var(--text-secondary);">Cours terminés</p>
+                </div>
+              </div>
+              <div class="stat-card card">
+                <div class="card-body">
+                  <h3 id="stat-progress" style="font-size:32px;margin:0;">0%</h3>
+                  <p style="margin:5px 0 0;color:var(--text-secondary);">Progression moyenne</p>
+                </div>
+              </div>
+            </div>
+            <section>
+              <h3 style="margin-bottom:20px;">Mes cours récents</h3>
+              <div id="courses-container">
+                <div class="loading">
+                  <div class="spinner"></div>
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <!-- Autres pages -->
+          <div class="content-page hidden" id="courses-content">
+            <div class="content-header">
+              <h2>Mes cours</h2>
+              <button class="btn btn-primary" id="download-course-btn-2" onclick="showDownloadModal()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                Télécharger un cours
+              </button>
+            </div>
+            <div id="courses-list"></div>
+          </div>
+          
+          <div class="content-page hidden" id="downloads-content">
+            <div class="content-header">
+              <h2>Téléchargements</h2>
+            </div>
+            <div id="downloads-list"></div>
+          </div>
+          
+          <div class="content-page hidden" id="progress-content">
+            <div class="content-header">
+              <h2>Ma progression</h2>
+            </div>
+            <div id="progress-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <!-- Download Modal -->
+  <div id="download-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Télécharger un cours</h3>
+        <button class="btn btn-icon" id="close-download-modal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label for="course-select">Sélectionner un cours</label>
+          <select id="course-select" class="form-control">
+            <option value="">Chargement des cours...</option>
+          </select>
+        </div>
+        <div id="download-info" class="hidden"></div>
+        <div class="download-options">
+          <label class="checkbox-label">
+            <input type="checkbox" id="include-videos" checked /> Inclure les vidéos
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="include-documents" checked /> Inclure les documents
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="compress-media" /> Compresser les médias
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="cancel-download">Annuler</button>
+        <button class="btn btn-primary" id="start-download">Télécharger</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal-backdrop hidden">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 class="modal-title">Paramètres</h3>
+        <button class="btn btn-icon" id="close-settings-modal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h4>Général</h4>
+          <div class="form-group">
+            <label for="theme-select">Thème</label>
+            <select id="theme-select" class="form-control">
+              <option value="light">Clair</option>
+              <option value="dark">Sombre</option>
+              <option value="auto">Automatique</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="language-select">Langue</label>
+            <select id="language-select" class="form-control">
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="settings-section">
+          <h4>Téléchargements</h4>
+          <div class="form-group">
+            <label for="download-quality">Qualité vidéo par défaut</label>
+            <select id="download-quality" class="form-control">
+              <option value="high">Haute qualité</option>
+              <option value="medium">Qualité moyenne</option>
+              <option value="low">Basse qualité</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="auto-download" /> Télécharger automatiquement les mises à jour
+            </label>
+          </div>
+        </div>
+        
+        <div class="settings-section">
+          <h4>Synchronisation</h4>
+          <div class="form-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="auto-sync" checked /> Synchronisation automatique
+            </label>
+          </div>
+          <div class="form-group">
+            <label for="sync-interval">Intervalle de synchronisation</label>
+            <select id="sync-interval" class="form-control">
+              <option value="5">5 minutes</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 heure</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="settings-section">
+          <h4>À propos</h4>
+          <p>LearnPress Offline v1.0.0</p>
+          <p class="text-secondary">Application de formation hors ligne sécurisée</p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="close-settings">Fermer</button>
+        <button class="btn btn-primary" id="save-settings">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Global Loader -->
+  <div id="global-loader" class="loader-overlay hidden">
+    <div class="loader-content">
+      <div class="spinner"></div>
+      <p id="loader-message">Chargement...</p>
+    </div>
+  </div>
+
+  <!-- Course Player (Hidden by default) -->
+  <div id="course-player" class="page hidden">
+    <!-- Le contenu du player sera ajouté dynamiquement -->
+  </div>
+
+  
+  
+  <script src="js/utils.js"></script>
+  <script src="js/logger.js"></script>
+  <script src="js/auth.js"></script>
+  <!--<script src="js/course-functions.js"></script>
+-->
+  <script src="js/courses.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/downloads.js"></script>
+  <script src="js/progress.js"></script>
+  <script src="js/app.js"></script>
+
+<!-- Script de navigation amélioré -->
+<script>
+    // Variables globales pour le debug
+    window.navigationDebug = {
+      modulesLoaded: false,
+      navigationReady: false,
+      lastNavigation: null
+    };
+
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('=== INITIALISATION NAVIGATION ===');
+      
+      // Créer les fonctions de navigation si elles n'existent pas
+      if (!window.showContentPage) {
+        window.showContentPage = function(pageId) {
+          console.log(`[Navigation Local] Affichage de la page: ${pageId}`);
+          
+          // Masquer toutes les pages
+          document.querySelectorAll('.content-page').forEach(page => {
+            page.classList.add('hidden');
+            page.style.display = 'none';
+          });
+          
+          // Afficher la page demandée
+          const targetPage = document.getElementById(`${pageId}-content`);
+          if (targetPage) {
+            targetPage.classList.remove('hidden');
+            targetPage.style.display = 'block';
+            
+            // Mettre à jour le titre
+            const pageTitle = document.getElementById('page-title');
+            if (pageTitle) {
+              const titles = {
+                'dashboard': 'Tableau de bord',
+                'courses': 'Mes cours',
+                'downloads': 'Téléchargements',
+                'progress': 'Ma progression'
+              };
+              pageTitle.textContent = titles[pageId] || pageId;
+            }
+          }
+        };
+      }
+      
+      if (!window.loadPageContent) {
+        window.loadPageContent = function(page) {
+          console.log(`[Navigation Local] Chargement du contenu: ${page}`);
+          
+          switch(page) {
+            case 'dashboard':
+              if (window.loadDashboardData) {
+                window.loadDashboardData();
+              }
+              break;
+              
+            case 'courses':
+              if (window.loadCoursesPage) {
+                window.loadCoursesPage();
+              } else if (window.loadCourses) {
+                window.loadCourses();
+              }
+              break;
+              
+            case 'downloads':
+              if (window.loadDownloadsPage) {
+                window.loadDownloadsPage();
+              } else {
+                const container = document.getElementById('downloads-list');
+                if (container) {
+                  container.innerHTML = '<p>Module de téléchargements en cours de chargement...</p>';
+                }
+              }
+              break;
+              
+            case 'progress':
+              if (window.loadProgressPage) {
+                window.loadProgressPage();
+              } else {
+                const container = document.getElementById('progress-container');
+                if (container) {
+                  container.innerHTML = '<p>Module de progression en cours de chargement...</p>';
+                }
+              }
+              break;
+          }
+        };
+      }
+      
+      let checkAttempts = 0;
+      const maxAttempts = 50; // 5 secondes max
+      
+      // Fonction pour vérifier que tous les modules sont chargés
+      const checkModulesLoaded = () => {
+        checkAttempts++;
+        
+        const modulesStatus = {
+          downloads: typeof window.loadDownloadsPage === 'function',
+          progress: typeof window.loadProgressPage === 'function',
+          courses: typeof window.loadCoursesPage === 'function',
+          showContent: typeof window.showContentPage === 'function',
+          loadContent: typeof window.loadPageContent === 'function'
+        };
+        
+        console.log(`[Navigation] Tentative ${checkAttempts}/${maxAttempts}`, modulesStatus);
+        
+        // Vérifier si les modules essentiels sont chargés
+        const essentialModulesLoaded = modulesStatus.downloads && 
+                                      modulesStatus.progress;
+        
+        if (essentialModulesLoaded) {
+          console.log('[Navigation] ✅ Modules essentiels chargés');
+          window.navigationDebug.modulesLoaded = true;
+          setupNavigation();
+        } else if (checkAttempts >= maxAttempts) {
+          console.error('[Navigation] ⚠️ Timeout - Configuration de la navigation quand même');
+          setupNavigation();
+        } else {
+          // Réessayer dans 100ms
+          setTimeout(checkModulesLoaded, 100);
+        }
+      };
+      
+      // Fonction pour configurer la navigation
+      const setupNavigation = () => {
+        console.log('[Navigation] Configuration de la navigation...');
+        
+        const navItems = document.querySelectorAll('.nav-item');
+        console.log(`[Navigation] ${navItems.length} éléments de navigation trouvés`);
+        
+        navItems.forEach((item, index) => {
+          // Retirer les anciens listeners
+          const newItem = item.cloneNode(true);
+          item.parentNode.replaceChild(newItem, item);
+          
+          newItem.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const page = newItem.dataset.page;
+            console.log(`[Navigation] Clic sur: ${page}`);
+            window.navigationDebug.lastNavigation = page;
+            
+            if (!page) {
+              console.error('[Navigation] Pas de data-page sur l\'élément');
+              return;
+            }
+            
+            // Vérifier que la page de contenu existe
+            const contentPage = document.getElementById(`${page}-content`);
+            if (!contentPage) {
+              console.error(`[Navigation] Page de contenu non trouvée: ${page}-content`);
+              return;
+            }
+            
+            // Mettre à jour la navigation active
+            document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+            newItem.classList.add('active');
+            
+            // Toujours utiliser les fonctions globales (créées localement si nécessaire)
+            window.showContentPage(page);
+            window.loadPageContent(page);
+          });
+        });
+        
+        window.navigationDebug.navigationReady = true;
+        console.log('[Navigation] ✅ Navigation configurée avec succès');
+        
+        // Fonction helper globale pour la navigation programmatique
+        window.navigateTo = (page) => {
+          console.log(`[Navigation] Navigation programmatique vers: ${page}`);
+          const navItem = document.querySelector(`[data-page="${page}"]`);
+          if (navItem) {
+            navItem.click();
+          } else {
+            console.error(`[Navigation] Élément de navigation non trouvé pour: ${page}`);
+          }
+        };
+      };
+      
+      // Lancer la vérification des modules
+      checkModulesLoaded();
+    });
+
+    // Fonctions globales pour le debug
+    window.debugNavigation = () => {
+      console.log('=== DEBUG NAVIGATION ===');
+      console.log('État:', window.navigationDebug);
+      console.log('Modules disponibles:', {
+        loadDownloadsPage: typeof window.loadDownloadsPage,
+        loadProgressPage: typeof window.loadProgressPage,
+        loadCoursesPage: typeof window.loadCoursesPage,
+        showContentPage: typeof window.showContentPage,
+        loadPageContent: typeof window.loadPageContent,
+        loadDashboardData: typeof window.loadDashboardData,
+        loadCourses: typeof window.loadCourses
+      });
+      console.log('Pages de contenu:', {
+        dashboard: !!document.getElementById('dashboard-content'),
+        courses: !!document.getElementById('courses-content'),
+        downloads: !!document.getElementById('downloads-content'),
+        progress: !!document.getElementById('progress-content')
+      });
+    };
+
+    window.testNavigation = (page) => {
+      console.log(`[Navigation] Test de navigation vers: ${page}`);
+      if (window.navigateTo) {
+        window.navigateTo(page);
+      } else {
+        console.error('[Navigation] navigateTo non disponible');
+      }
+    };
+    
+    // Fonction pour recharger une page spécifique
+    window.reloadPage = (page) => {
+      console.log(`[Navigation] Rechargement de la page: ${page}`);
+      if (window.loadPageContent) {
+        window.loadPageContent(page);
+      }
+    };
+</script>
+</body>
+</html>

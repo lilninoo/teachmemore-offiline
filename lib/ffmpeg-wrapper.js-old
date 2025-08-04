@@ -1,0 +1,16 @@
+// lib/ffmpeg-wrapper.js
+const ffmpeg = require('fluent-ffmpeg');
+const ffmpegPath = require('ffmpeg-static');
+
+ffmpeg.setFfmpegPath(ffmpegPath);
+
+// Optionnel : gérer les erreurs globales ou log
+ffmpeg.getAvailableFormats((err, formats) => {
+  if (err) {
+    console.warn('[FFMPEG] Impossible de récupérer les formats disponibles:', err.message);
+  } else {
+    console.log('[FFMPEG] Formats disponibles (extrait):', Object.keys(formats).slice(0,5));
+  }
+});
+
+module.exports = ffmpeg;

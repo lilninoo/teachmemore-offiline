@@ -1,0 +1,361 @@
+<?php
+/**
+ * Classe de migration pour COL LMS Offline API
+ * 
+ * Gère les mises à jour de la base de données et la migration des données
+ * 
+ * @package COL_LMS_Offline_API
+ * @since 1.0.0
+ */
+
+class COL_LMS_Migration {
+    
+    /**
+     * Version actuelle de la DB
+     */
+    private $db_version = '1.0.0';
+    
+    /**
+     * Constructeur
+     */
+    public function __construct() {
+        add_action('admin_init', array($this, 'check_version'));
+    }
+    
+    /**
+     * Vérifier si une migration est nécessaire
+     */
+    public function check_version() {
+        $current_version = get_option('col_lms_db_version', '0');
+        
+        if (version_compare($current_version, $this->db_version, '<')) {
+            $this->migrate($current_version);
+        }
+    }
+    
+    /**
+     * Exécuter les migrations
+     */
+    private function migrate($from_version) {
+        global $wpdb;
+        
+        // Désactiver les erreurs pendant la migration
+        $wpdb->hide_errors();
+        
+        // Migration depuis 0 (première installation)
+        if ($from_version === '0') {
+            $this->create_initial_tables();
+            $this->setup_default_options();
+            $this->create_api_user_role();
+        }
+        
+        // Futures migrations
+        // if (version_compare($from_version, '1.1.0', '<')) {
+        //     $this->migrate_to_1_1_0();
+        // }
+        
+        // Mettre à jour la version
+        update_option('col_lms_db_version', $this->db_version);
+        
+        // Réactiver les erreurs
+        $wpdb->show_errors();
+    }
+    
+    /**
+     * Créer les tables initiales
+     */
+    private function create_initial_tables() {
+        global $wpdb;
+        
+        $charset_collate = $wpdb->get_charset_collate();
+        
+        // Table des tokens
+        $table_tokens = $wpdb->prefix . 'col_lms_tokens';
+        $sql_tokens = "CREATE TABLE IF NOT EXISTS $table_tokens (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) NOT NULL,
+            device_id varchar(255) NOT NULL,
+            device_name varchar(255),
+            device_type varchar(50),
+            token_hash varchar(255) NOT NULL,
+            refresh_token_hash varchar(255) NOT NULL,
+            expires_at datetime NOT NULL,
+            last_used datetime,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY user_device (user_id, device_id),
+            KEY token_hash (token_hash),
+            KEY expires_at (expires_at)
+        ) $charset_collate;";
+        
+        // Table des packages
+        $table_packages = $wpdb->prefix . 'col_lms_packages';
+        $sql_packages = "CREATE TABLE IF NOT EXISTS $table_packages (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            package_id varchar(255) NOT NULL,
+            user_id bigint(20) NOT NULL,
+            course_id bigint(20) NOT NULL,
+            status varchar(20) NOT NULL DEFAULT 'pending',
+            progress int(3) DEFAULT 0,
+            options longtext,
+            files longtext,
+            error_message text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            completed_at datetime,
+            PRIMARY KEY (id),
+            UNIQUE KEY package_id (package_id),
+            KEY user_course (user_id, course_id),
+            KEY status (status)
+        ) $charset_collate;";
+        
+        // Table des logs d'activité
+        $table_activity = $wpdb->prefix . 'col_lms_activity_log';
+        $sql_activity = "CREATE TABLE IF NOT EXISTS $table_activity (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) NOT NULL,
+            device_id varchar(255),
+            action varchar(50) NOT NULL,
+            object_type varchar(50),
+            object_id bigint(20),
+            details longtext,
+            ip_address varchar(45),
+            user_agent text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY user_action (user_id, action),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
+        // Table de synchronisation
+        $table_sync = $wpdb->prefix . 'col_lms_sync_queue';
+        $sql_sync = "CREATE TABLE IF NOT EXISTS $table_sync (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            user_id bigint(20) NOT NULL,
+            sync_type varchar(50) NOT NULL,
+            sync_data longtext NOT NULL,
+            status varchar(20) NOT NULL DEFAULT 'pending',
+            attempts int(11) DEFAULT 0,
+            error_message text,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            processed_at datetime,
+            PRIMARY KEY (id),
+            KEY user_status (user_id, status),
+            KEY created_at (created_at)
+        ) $charset_collate;";
+        
+        require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+        dbDelta($sql_tokens);
+        dbDelta($sql_packages);
+        dbDelta($sql_activity);
+        dbDelta($sql_sync);
+        
+        // Créer les index supplémentaires
+        $this->create_indexes();
+    }
+    
+    /**
+     * Créer les index pour optimiser les performances
+     */
+    private function create_indexes() {
+        global $wpdb;
+        
+        // Index pour la recherche rapide des tokens actifs
+        $wpdb->query("CREATE INDEX idx_active_tokens ON {$wpdb->prefix}col_lms_tokens (user_id, expires_at) WHERE expires_at > NOW()");
+        
+        // Index pour les packages en cours
+        $wpdb->query("CREATE INDEX idx_active_packages ON {$wpdb->prefix}col_lms_packages (user_id, status) WHERE status IN ('pending', 'processing')");
+    }
+    
+    /**
+     * Configurer les options par défaut
+     */
+    private function setup_default_options() {
+        // Options générales
+        add_option('col_lms_api_enabled', true);
+        add_option('col_lms_require_membership', true);
+        add_option('col_lms_allowed_membership_levels', array());
+        add_option('col_lms_token_lifetime', 3600); // 1 heure
+        add_option('col_lms_refresh_token_lifetime', 604800); // 7 jours
+        add_option('col_lms_max_devices_per_user', 5);
+        
+        // Options de sécurité
+        add_option('col_lms_enable_rate_limiting', true);
+        add_option('col_lms_rate_limit_requests', 100);
+        add_option('col_lms_rate_limit_window', 3600); // 1 heure
+        add_option('col_lms_enable_ip_whitelist', false);
+        add_option('col_lms_ip_whitelist', array());
+        
+        // Options de téléchargement
+        add_option('col_lms_enable_course_packages', true);
+        add_option('col_lms_package_expiry_hours', 24);
+        add_option('col_lms_max_package_size', 2147483648); // 2GB
+        add_option('col_lms_allowed_file_types', array(
+            'video' => array('mp4', 'webm', 'ogv'),
+            'audio' => array('mp3', 'ogg', 'wav'),
+            'document' => array('pdf', 'doc', 'docx', 'ppt', 'pptx'),
+            'image' => array('jpg', 'jpeg', 'png', 'gif', 'svg')
+        ));
+        
+        // Options de synchronisation
+        add_option('col_lms_enable_progress_sync', true);
+        add_option('col_lms_sync_batch_size', 100);
+        add_option('col_lms_cleanup_old_data_days', 30);
+        
+        // Statistiques
+        add_option('col_lms_stats', array(
+            'total_api_calls' => 0,
+            'total_downloads' => 0,
+            'total_sync_operations' => 0,
+            'last_reset' => current_time('mysql')
+        ));
+    }
+    
+    /**
+     * Créer le rôle utilisateur pour l'API
+     */
+    private function create_api_user_role() {
+        // Capacités pour les utilisateurs de l'API
+        $capabilities = array(
+            'read' => true,
+            'col_lms_use_api' => true,
+            'col_lms_download_courses' => true,
+            'col_lms_sync_progress' => true
+        );
+        
+        // Créer le rôle s'il n'existe pas
+        if (!get_role('col_lms_api_user')) {
+            add_role('col_lms_api_user', __('API User (LearnPress Offline)', 'col-lms-offline-api'), $capabilities);
+        }
+        
+        // Ajouter les capacités aux rôles existants
+        $roles_with_api_access = array('administrator', 'lp_teacher', 'subscriber');
+        
+        foreach ($roles_with_api_access as $role_name) {
+            $role = get_role($role_name);
+            if ($role) {
+                foreach ($capabilities as $cap => $grant) {
+                    $role->add_cap($cap, $grant);
+                }
+            }
+        }
+    }
+    
+    /**
+     * Nettoyer lors de la désinstallation
+     */
+    public static function uninstall() {
+        global $wpdb;
+        
+        // Supprimer les tables
+        $tables = array(
+            $wpdb->prefix . 'col_lms_tokens',
+            $wpdb->prefix . 'col_lms_packages',
+            $wpdb->prefix . 'col_lms_activity_log',
+            $wpdb->prefix . 'col_lms_sync_queue'
+        );
+        
+        foreach ($tables as $table) {
+            $wpdb->query("DROP TABLE IF EXISTS $table");
+        }
+        
+        // Supprimer les options
+        $options = array(
+            'col_lms_db_version',
+            'col_lms_api_enabled',
+            'col_lms_require_membership',
+            'col_lms_allowed_membership_levels',
+            'col_lms_token_lifetime',
+            'col_lms_refresh_token_lifetime',
+            'col_lms_max_devices_per_user',
+            'col_lms_enable_rate_limiting',
+            'col_lms_rate_limit_requests',
+            'col_lms_rate_limit_window',
+            'col_lms_enable_ip_whitelist',
+            'col_lms_ip_whitelist',
+            'col_lms_enable_course_packages',
+            'col_lms_package_expiry_hours',
+            'col_lms_max_package_size',
+            'col_lms_allowed_file_types',
+            'col_lms_enable_progress_sync',
+            'col_lms_sync_batch_size',
+            'col_lms_cleanup_old_data_days',
+            'col_lms_stats'
+        );
+        
+        foreach ($options as $option) {
+            delete_option($option);
+        }
+        
+        // Supprimer le rôle
+        remove_role('col_lms_api_user');
+        
+        // Supprimer les capacités des autres rôles
+        $capabilities = array('col_lms_use_api', 'col_lms_download_courses', 'col_lms_sync_progress');
+        $roles = array('administrator', 'lp_teacher', 'subscriber');
+        
+        foreach ($roles as $role_name) {
+            $role = get_role($role_name);
+            if ($role) {
+                foreach ($capabilities as $cap) {
+                    $role->remove_cap($cap);
+                }
+            }
+        }
+        
+        // Supprimer les transients
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_col_lms_%'");
+        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE '_transient_timeout_col_lms_%'");
+        
+        // Nettoyer les tâches cron
+        wp_clear_scheduled_hook('col_lms_cleanup_tokens');
+        wp_clear_scheduled_hook('col_lms_cleanup_packages');
+        wp_clear_scheduled_hook('col_lms_process_sync_queue');
+    }
+    
+    /**
+     * Effectuer des vérifications de santé
+     */
+    public function health_check() {
+        global $wpdb;
+        
+        $issues = array();
+        
+        // Vérifier les tables
+        $tables = array(
+            'col_lms_tokens',
+            'col_lms_packages',
+            'col_lms_activity_log',
+            'col_lms_sync_queue'
+        );
+        
+        foreach ($tables as $table) {
+            $table_name = $wpdb->prefix . $table;
+            if ($wpdb->get_var("SHOW TABLES LIKE '$table_name'") != $table_name) {
+                $issues[] = sprintf(__('Table %s manquante', 'col-lms-offline-api'), $table_name);
+            }
+        }
+        
+        // Vérifier les plugins requis
+        if (!class_exists('LearnPress')) {
+            $issues[] = __('LearnPress n\'est pas installé ou activé', 'col-lms-offline-api');
+        }
+        
+        // Vérifier HTTPS
+        if (!is_ssl() && !defined('COL_LMS_ALLOW_HTTP')) {
+            $issues[] = __('HTTPS est requis pour la sécurité de l\'API', 'col-lms-offline-api');
+        }
+        
+        // Vérifier les permissions des dossiers
+        $upload_dir = wp_upload_dir();
+        $package_dir = $upload_dir['basedir'] . '/col-lms-packages';
+        
+        if (!is_writable($upload_dir['basedir'])) {
+            $issues[] = __('Le dossier uploads n\'est pas accessible en écriture', 'col-lms-offline-api');
+        }
+        
+        return $issues;
+    }
+}
+
+// Hook de désinstallation
+register_uninstall_hook(COL_LMS_API_BASENAME, array('COL_LMS_Migration', 'uninstall'));

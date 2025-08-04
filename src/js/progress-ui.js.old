@@ -1,0 +1,96 @@
+// progress-ui.js
+class ProgressUI {
+    constructor(courseManager) {
+        this.courseManager = courseManager;
+        this.updateInterval = null;
+    }
+
+    async renderProgressPage() {
+        const container = document.getElementById('progress-container');
+        if (!container) return;
+        
+        container.innerHTML = '<div class="loading">Chargement de votre progression...</div>';
+        
+        try {
+            // Utiliser CourseManager pour obtenir la progression
+            const progressData = await this.courseManager.getDetailedProgress();
+            this.displayProgress(progressData, container);
+            this.startAutoUpdate();
+        } catch (error) {
+            console.error('[ProgressUI] Erreur:', error);
+            container.innerHTML = this.renderError(error);
+        }
+    }
+
+    displayProgress(progressData, container) {
+        const { courses, statistics, achievements } = progressData;
+        
+        // Séparer par statut
+        const inProgress = courses.filter(c => c.progress > 0 && c.progress < 100);
+        const completed = courses.filter(c => c.progress >= 100);
+        const notStarted = courses.filter(c => c.progress === 0);
+        
+        let html = `
+            <div class="progress-overview">
+                ${this.renderStatistics(statistics)}
+                ${this.renderProgressChart(courses)}
+                ${this.renderCoursesByStatus(inProgress, completed, notStarted)}
+                ${achievements ? this.renderAchievements(achievements) : ''}
+            </div>
+        `;
+        
+        container.innerHTML = html;
+        this.drawChart(courses);
+        this.attachEventHandlers();
+    }
+
+    renderStatistics(stats) {
+        return `
+            <div class="progress-stats">
+                <div class="stat-card">
+                    <div class="stat-value">${stats.totalCourses}</div>
+                    <div class="stat-label">Cours total</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.completedCourses}</div>
+                    <div class="stat-label">Cours terminés</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.totalLessons}</div>
+                    <div class="stat-label">Leçons total</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${stats.completedLessons}</div>
+                    <div class="stat-label">Leçons terminées</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${Math.round(stats.globalProgress)}%</div>
+                    <div class="stat-label">Progression globale</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">${this.formatDuration(stats.totalTime)}</div>
+                    <div class="stat-label">Temps total</div>
+                </div>
+            </div>
+        `;
+    }
+
+    async generateCertificate(courseId) {
+        try {
+            const certificate = await this.courseManager.generateCertificate(courseId);
+            if (certificate.success) {
+                showSuccess('Certificat généré avec succès');
+                // Ouvrir ou télécharger le certificat
+                window.open(certificate.url);
+            }
+        } catch (error) {
+            showError('Erreur lors de la génération du certificat');
+        }
+    }
+
+    cleanup() {
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+        }
+    }
+}

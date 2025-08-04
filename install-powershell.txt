@@ -1,0 +1,282 @@
+# install.ps1 - Script d'installation Windows pour LearnPress Offline
+
+# Vérifier les droits administrateur
+if (-NOT ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+    Write-Host "Ce script doit être exécuté en tant qu'administrateur." -ForegroundColor Red
+    Write-Host "Clic droit sur PowerShell → Exécuter en tant qu'administrateur" -ForegroundColor Yellow
+    pause
+    exit
+}
+
+# Configuration des couleurs
+$host.UI.RawUI.BackgroundColor = "Black"
+Clear-Host
+
+# Logo ASCII
+Write-Host @"
+ _                           ____                         
+| |    ___  __ _ _ __ _ __ |  _ \ _ __ ___  ___ ___     
+| |   / _ \/ _`` | '__| '_ \| |_) | '__/ _ \/ __/ __|    
+| |__|  __/ (_| | |  | | | |  __/| | |  __/\__ \__ \    
+|_____\___|\__,_|_|  |_| |_|_|   |_|  \___||___/___/    
+                                                         
+          ___   __  __ _ _              
+         / _ \ / _|/ _| (_)_ __   ___   
+        | | | | |_| |_| | | '_ \ / _ \  
+        | |_| |  _|  _| | | | | |  __/  
+         \___/|_| |_| |_|_|_| |_|\___|  
+                                        
+"@ -ForegroundColor Cyan
+
+Write-Host "`n=== Installation de LearnPress Offline pour Windows ===" -ForegroundColor Green
+Write-Host ""
+
+# Fonction pour vérifier les prérequis
+function Check-Prerequisites {
+    Write-Host "📋 Vérification des prérequis..." -ForegroundColor Blue
+    
+    $prerequisites = @{
+        "Node.js" = "node"
+        "npm" = "npm"
+        "Git" = "git"
+    }
+    
+    $allGood = $true
+    
+    foreach ($tool in $prerequisites.Keys) {
+        $command = $prerequisites[$tool]
+        try {
+            $version = & $command --version 2>$null
+            if ($version) {
+                Write-Host "✅ $tool installé : $version" -ForegroundColor Green
+            }
+        }
+        catch {
+            if ($tool -eq "Git") {
+                Write-Host "⚠️  $tool n'est pas installé (optionnel)" -ForegroundColor Yellow
+            }
+            else {
+                Write-Host "❌ $tool n'est pas installé" -ForegroundColor Red
+                Write-Host "   Téléchargez depuis : " -NoNewline
+                
+                if ($tool -eq "Node.js") {
+                    Write-Host "https://nodejs.org" -ForegroundColor Yellow
+                }
+                
+                $allGood = $false
+            }
+        }
+    }
+    
+    Write-Host ""
+    return $allGood
+}
+
+# Fonction pour créer la structure du projet
+function Create-ProjectStructure {
+    Write-Host "📁 Création de la structure du projet..." -ForegroundColor Blue
+    
+    $directories = @(
+        "src\js",
+        "src\css",
+        "lib",
+        "assets\icons",
+        "assets\images",
+        "database",
+        "build",
+        "scripts",
+        "tests",
+        "wordpress-plugin",
+        ".github\workflows"
+    )
+    
+    foreach ($dir in $directories) {
+        if (!(Test-Path $dir)) {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+            Write-Host "✅ Créé : $dir" -ForegroundColor Green
+        }
+        else {
+            Write-Host "✅ Existe déjà : $dir" -ForegroundColor DarkGreen
+        }
+    }
+    
+    Write-Host ""
+}
+
+# Fonction pour installer les dépendances
+function Install-Dependencies {
+    Write-Host "📦 Installation des dépendances npm..." -ForegroundColor Blue
+    
+    if (Test-Path "package.json") {
+        Write-Host "Installation en cours... (cela peut prendre quelques minutes)" -ForegroundColor Yellow
+        
+        # Nettoyer le cache npm si nécessaire
+        npm cache clean --force 2>$null
+        
+        # Installer les dépendances
+        npm install
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "✅ Dépendances installées avec succès" -ForegroundColor Green
+        }
+        else {
+            Write-Host "❌ Erreur lors de l'installation des dépendances" -ForegroundColor Red
+            Write-Host "Essayez : npm install --force" -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host "❌ package.json non trouvé" -ForegroundColor Red
+        Write-Host "Assurez-vous d'avoir copié tous les fichiers du projet" -ForegroundColor Yellow
+    }
+    
+    Write-Host ""
+}
+
+# Fonction pour configurer l'environnement
+function Setup-Environment {
+    Write-Host "⚙️  Configuration de l'environnement..." -ForegroundColor Blue
+    
+    # Vérifier ou créer le fichier .env
+    if (!(Test-Path ".env")) {
+        Write-Host "Génération de la clé de chiffrement..." -ForegroundColor Yellow
+        npm run generate-key
+        Write-Host "✅ Clé de chiffrement générée" -ForegroundColor Green
+    }
+    else {
+        Write-Host "✅ Fichier .env déjà présent" -ForegroundColor DarkGreen
+    }
+    
+    # Vérifier l'icône
+    if (!(Test-Path "assets\icons\icon.png")) {
+        Write-Host "⚠️  N'oubliez pas de créer une icône 1024x1024 dans assets\icons\icon.png" -ForegroundColor Yellow
+    }
+    
+    Write-Host ""
+}
+
+# Fonction pour configurer Windows Defender
+function Configure-WindowsDefender {
+    Write-Host "🛡️ Configuration de Windows Defender..." -ForegroundColor Blue
+    
+    $currentPath = Get-Location
+    
+    try {
+        # Ajouter le dossier aux exclusions
+        Add-MpPreference -ExclusionPath $currentPath -ErrorAction SilentlyContinue
+        Write-Host "✅ Dossier ajouté aux exclusions Windows Defender" -ForegroundColor Green
+    }
+    catch {
+        Write-Host "⚠️  Impossible d'ajouter aux exclusions Windows Defender" -ForegroundColor Yellow
+        Write-Host "   Vous pouvez le faire manuellement dans les paramètres Windows" -ForegroundColor Gray
+    }
+    
+    Write-Host ""
+}
+
+# Fonction pour créer des raccourcis
+function Create-Shortcuts {
+    Write-Host "🔗 Création des raccourcis..." -ForegroundColor Blue
+    
+    $WshShell = New-Object -comObject WScript.Shell
+    
+    # Raccourci sur le bureau pour le développement
+    $desktopPath = [Environment]::GetFolderPath("Desktop")
+    $shortcut = $WshShell.CreateShortcut("$desktopPath\LearnPress Offline Dev.lnk")
+    $shortcut.TargetPath = "powershell.exe"
+    $shortcut.Arguments = "-NoExit -Command `"cd '$pwd'; npm start`""
+    $shortcut.WorkingDirectory = $pwd
+    $shortcut.IconLocation = "$pwd\assets\icons\icon.ico"
+    $shortcut.Save()
+    
+    Write-Host "✅ Raccourci créé sur le bureau" -ForegroundColor Green
+    Write-Host ""
+}
+
+# Fonction pour afficher les prochaines étapes
+function Show-NextSteps {
+    Write-Host "🎉 Installation terminée !" -ForegroundColor Green -BackgroundColor DarkGreen
+    Write-Host ""
+    
+    Write-Host "📝 Prochaines étapes :" -ForegroundColor Blue
+    Write-Host "1. Installer le plugin WordPress sur votre site" -ForegroundColor White
+    Write-Host "2. Créer une icône 1024x1024 si ce n'est pas fait" -ForegroundColor White
+    Write-Host "3. Tester l'application : " -NoNewline
+    Write-Host "npm start" -ForegroundColor Yellow
+    Write-Host "4. Builder pour Windows : " -NoNewline
+    Write-Host "npm run build-win" -ForegroundColor Yellow
+    
+    Write-Host "`n🚀 Commandes utiles :" -ForegroundColor Blue
+    Write-Host "- Démarrer en dev : " -NoNewline
+    Write-Host "npm run dev" -ForegroundColor Yellow
+    Write-Host "- Lancer les tests : " -NoNewline
+    Write-Host "npm test" -ForegroundColor Yellow
+    Write-Host "- Nettoyer : " -NoNewline
+    Write-Host "npm run clean" -ForegroundColor Yellow
+    
+    Write-Host "`n📚 Documentation :" -ForegroundColor Blue
+    Write-Host "- Guide complet : README.md" -ForegroundColor White
+    Write-Host "- Installation : INSTALLATION.md" -ForegroundColor White
+    Write-Host "- Contribution : CONTRIBUTING.md" -ForegroundColor White
+}
+
+# Menu principal
+function Main-Menu {
+    Write-Host "Que souhaitez-vous faire ?" -ForegroundColor Blue
+    Write-Host "[1] Installation complète (recommandé)" -ForegroundColor White
+    Write-Host "[2] Vérifier les prérequis seulement" -ForegroundColor White
+    Write-Host "[3] Installer les dépendances seulement" -ForegroundColor White
+    Write-Host "[4] Configurer l'environnement seulement" -ForegroundColor White
+    Write-Host "[5] Configurer Windows Defender" -ForegroundColor White
+    Write-Host "[6] Créer les raccourcis" -ForegroundColor White
+    Write-Host "[Q] Quitter" -ForegroundColor White
+    Write-Host ""
+    
+    $choice = Read-Host "Votre choix"
+    
+    switch ($choice) {
+        "1" {
+            $ready = Check-Prerequisites
+            if ($ready) {
+                Create-ProjectStructure
+                Install-Dependencies
+                Setup-Environment
+                Configure-WindowsDefender
+                Create-Shortcuts
+                Show-NextSteps
+            }
+        }
+        "2" { Check-Prerequisites }
+        "3" { Install-Dependencies }
+        "4" { Setup-Environment }
+        "5" { Configure-WindowsDefender }
+        "6" { Create-Shortcuts }
+        "Q" { 
+            Write-Host "`nAu revoir !" -ForegroundColor Blue
+            exit 
+        }
+        default {
+            Write-Host "`nChoix invalide" -ForegroundColor Red
+            pause
+            Clear-Host
+            Main-Menu
+        }
+    }
+}
+
+# Vérifier si on est dans le bon dossier
+if (!(Test-Path "package.json") -and $args[0] -ne "--init") {
+    Write-Host "⚠️  Attention : package.json non trouvé" -ForegroundColor Yellow
+    Write-Host "Assurez-vous d'être dans le dossier du projet LearnPress Offline" -ForegroundColor Yellow
+    Write-Host ""
+    $continue = Read-Host "Continuer quand même ? (O/N)"
+    if ($continue -ne "O") {
+        exit
+    }
+}
+
+# Afficher le menu principal
+Main-Menu
+
+Write-Host "`n✨ Script terminé !" -ForegroundColor Green
+Write-Host "Appuyez sur une touche pour fermer..." -ForegroundColor Gray
+$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")

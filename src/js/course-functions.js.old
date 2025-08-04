@@ -1,0 +1,828 @@
+// course-functions.js - Centralisation des fonctions de gestion des cours avec DEBUG
+
+// Logger pour les fonctions de cours
+const CFLogger = {
+    log: (message, data) => {
+        if (window.Logger && typeof window.Logger.info === 'function') {
+            window.Logger.info(`[CourseFunctions] ${message}`, data);
+        } else {
+            console.log(`[CourseFunctions] ${message}`, data);
+        }
+    },
+    error: (message, error) => {
+        if (window.Logger && typeof window.Logger.error === 'function') {
+            window.Logger.error(`[CourseFunctions] ${message}`, error);
+        } else {
+            console.error(`[CourseFunctions] ${message}`, error);
+        }
+    },
+    debug: (message, data) => {
+        if (window.Logger && typeof window.Logger.debug === 'function') {
+            window.Logger.debug(`[CourseFunctions] ${message}`, data);
+        } else {
+            console.debug(`[CourseFunctions] ${message}`, data);
+        }
+    }
+};
+
+// Objet principal pour les fonctions de cours
+const CourseFunctions = {
+    // État local
+    downloadedCourses: new Set(),
+    lastRefresh: 0,
+    refreshInterval: 300000, // 5 minutes
+    
+    // Initialiser le module
+    init: async function() {
+        CFLogger.log('Initialisation du module CourseFunctions');
+        await this.refreshDownloadedCourses();
+    },
+    
+    // Rafraîchir la liste des cours téléchargés
+    refreshDownloadedCourses: async function() {
+        try {
+            const now = Date.now();
+            if (now - this.lastRefresh < 60000) { // Ne pas rafraîchir plus d'une fois par minute
+                return;
+            }
+            
+            CFLogger.debug('Rafraîchissement de la liste des cours téléchargés');
+            const localCourses = await window.electronAPI.db.getAllCourses();
+            
+            if (localCourses.success && localCourses.result) {
+                this.downloadedCourses.clear();
+                localCourses.result.forEach(course => {
+                    this.downloadedCourses.add(String(course.course_id));
+                });
+                this.lastRefresh = now;
+                CFLogger.log(`${this.downloadedCourses.size} cours téléchargés en cache`);
+            }
+        } catch (error) {
+            CFLogger.error('Erreur lors du rafraîchissement des cours téléchargés:', error);
+        }
+    },
+    
+    // Vérifier si un cours est téléchargé
+    isCourseDownloaded: function(courseId) {
+        return this.downloadedCourses.has(String(courseId));
+    },
+    
+    // Créer une carte de cours avec toutes les fonctionnalités
+    createCourseCard: function(course) {
+        const courseId = course.course_id || course.id;
+        const progress = course.progress || course.completion_percentage || 0;
+        const isExpired = isCourseExpired(course);
+        const isDownloaded = course.isDownloaded || course.is_downloaded || this.isCourseDownloaded(courseId);
+        const isOnline = window.ConnectionState ? window.ConnectionState.isOnline : navigator.onLine;
+        
+        // Valider que thumbnail est une string
+        let thumbnailUrl = DEFAULT_COURSE_IMAGE;
+        if (course.thumbnail) {
+            if (typeof course.thumbnail === 'string') {
+                thumbnailUrl = course.thumbnail;
+            } else if (typeof course.thumbnail === 'object' && course.thumbnail.url) {
+                thumbnailUrl = course.thumbnail.url;
+            }
+        }
+        
+        return `
+            <div class="course-card card ${!isOnline && !isDownloaded ? 'disabled' : ''}" 
+                data-course-id="${courseId}"
+                data-is-downloaded="${isDownloaded}">
+                <div class="course-thumbnail-wrapper">
+                    <img src="${thumbnailUrl}" 
+                        alt="${this.escapeHtml(course.title)}" 
+                        class="course-thumbnail"
+                        loading="lazy"
+                        onerror="this.src='${DEFAULT_COURSE_IMAGE}'">
+                    ${progress > 0 ? `
+                    <div class="course-progress-overlay">
+                        <div class="progress-circle">
+                            <span>${Math.round(progress)}%</span>
+                        </div>
+                    </div>
+                    ` : ''}
+                    ${isExpired ? '<div class="course-expired-badge">Expiré</div>' : ''}
+                    ${isDownloaded ? '<div class="course-downloaded-badge" title="Cours téléchargé">💾</div>' : ''}
+                    ${!isOnline && !isDownloaded ? '<div class="course-offline-badge" title="Connexion requise">🔒</div>' : ''}
+                </div>
+                <div class="card-body">
+                    <h3 class="course-title">${this.escapeHtml(course.title)}</h3>
+                    <p class="course-instructor">${this.escapeHtml(course.instructor_name || 'Instructeur')}</p>
+                    <div class="course-meta">
+                        <span>📚 ${course.lessons_count || 0} leçons</span>
+                        ${course.duration ? `<span>• ⏱️ ${course.duration}</span>` : ''}
+                        ${course.rating ? `<span>• ⭐ ${course.rating}/5</span>` : ''}
+                    </div>
+                    ${course.description ? `
+                    <p class="course-description">${this.escapeHtml(course.description).substring(0, 100)}...</p>
+                    ` : ''}
+                    <div class="course-actions">
+                        ${this.createCourseActions(course, isDownloaded, isOnline)}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    // Créer les actions pour une carte de cours
+    createCourseActions: function(course, isDownloaded, isOnline) {
+        const courseId = course.id || course.course_id;
+        
+        if (isDownloaded) {
+            return `
+                <button class="btn btn-primary btn-sm play-course-btn" 
+                        data-course-id="${courseId}"
+                        data-course-title="${this.escapeHtml(course.title)}">
+                    ${course.progress > 0 ? 'Continuer' : 'Commencer'}
+                </button>
+                ${course.completed || course.progress >= 100 ? `
+                <button class="btn btn-success btn-sm" disabled>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/>
+                    </svg>
+                    Terminé
+                </button>
+                ` : ''}
+                <button class="btn btn-secondary btn-sm more-options-btn" 
+                        data-course-id="${courseId}"
+                        title="Plus d'options">
+                    ⋮
+                </button>
+            `;
+        } else {
+            if (!isOnline) {
+                return `
+                    <button class="btn btn-secondary btn-sm" disabled>
+                        🔒 Connexion requise
+                    </button>
+                `;
+            }
+            
+            return `
+                <button class="btn btn-primary btn-sm download-course-btn" 
+                        data-course-id="${courseId}"
+                        data-course-title="${this.escapeHtml(course.title)}">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    Télécharger
+                </button>
+                <button class="btn btn-secondary btn-sm preview-course-btn" 
+                        data-course-id="${courseId}"
+                        title="Aperçu">
+                    👁️ Aperçu
+                </button>
+            `;
+        }
+    },
+
+    // Attacher les event listeners aux cartes de cours
+    attachCourseEventListeners: function() {
+        CFLogger.debug('Attaching course event listeners');
+        
+        // Boutons de lecture
+        document.querySelectorAll('.play-course-btn').forEach(btn => {
+            btn.removeEventListener('click', this.handlePlayClick);
+            btn.addEventListener('click', this.handlePlayClick.bind(this));
+        });
+        
+        // Boutons de téléchargement
+        document.querySelectorAll('.download-course-btn').forEach(btn => {
+            btn.removeEventListener('click', this.handleDownloadClick);
+            btn.addEventListener('click', this.handleDownloadClick.bind(this));
+        });
+        
+        // Boutons d'aperçu
+        document.querySelectorAll('.preview-course-btn').forEach(btn => {
+            btn.removeEventListener('click', this.handlePreviewClick);
+            btn.addEventListener('click', this.handlePreviewClick.bind(this));
+        });
+        
+        // Boutons plus d'options
+        document.querySelectorAll('.more-options-btn').forEach(btn => {
+            btn.removeEventListener('click', this.handleMoreOptionsClick);
+            btn.addEventListener('click', this.handleMoreOptionsClick.bind(this));
+        });
+        
+        // Cartes de cours (clic général)
+        document.querySelectorAll('.course-card').forEach(card => {
+            card.removeEventListener('click', this.handleCardClick);
+            card.addEventListener('click', this.handleCardClick.bind(this));
+        });
+    },
+    
+    // Gestionnaires d'événements
+    handlePlayClick: async function(e) {
+        e.stopPropagation();
+        const courseId = e.currentTarget.dataset.courseId;
+        const courseTitle = e.currentTarget.dataset.courseTitle;
+        
+        CFLogger.log('Play button clicked', { courseId, courseTitle });
+        
+        if (window.openCoursePlayer) {
+            window.openCoursePlayer(courseId);
+        } else if (window.openCourse) {
+            window.openCourse(courseId);
+        } else {
+            CFLogger.error('No course player function available');
+            if (window.showError) {
+                window.showError('Impossible d\'ouvrir le lecteur de cours');
+            }
+        }
+    },
+    
+    handleDownloadClick: async function(e) {
+        e.stopPropagation();
+        const courseId = e.currentTarget.dataset.courseId;
+        const courseTitle = e.currentTarget.dataset.courseTitle;
+        
+        CFLogger.log('Download button clicked', { courseId, courseTitle });
+        
+        // Vérifier la connexion
+        if (window.ConnectionState && !window.ConnectionState.isOnline) {
+            if (window.showWarning) {
+                window.showWarning('Une connexion Internet est requise pour télécharger des cours');
+            }
+            return;
+        }
+        
+        // Désactiver le bouton pour éviter les clics multiples
+        e.currentTarget.disabled = true;
+        e.currentTarget.innerHTML = '<span class="spinner spinner-small"></span> Préparation...';
+        
+        try {
+            const result = await this.downloadCourse(courseId, {
+                includeVideos: true,
+                includeDocuments: true,
+                compress: false
+            });
+            
+            if (result.success) {
+                // Mettre à jour la liste des cours téléchargés
+                this.downloadedCourses.add(String(courseId));
+                
+                if (window.showInfo) {
+                    window.showInfo(`Téléchargement de "${courseTitle}" démarré`);
+                }
+                
+                // Naviguer vers la page des téléchargements
+                if (window.navigateTo) {
+                    window.navigateTo('downloads');
+                }
+            } else {
+                e.currentTarget.disabled = false;
+                e.currentTarget.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Télécharger';
+                
+                if (window.showError) {
+                    window.showError(result.error || 'Erreur lors du téléchargement');
+                }
+            }
+        } catch (error) {
+            CFLogger.error('Error downloading course:', error);
+            e.currentTarget.disabled = false;
+            e.currentTarget.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg> Télécharger';
+            
+            if (window.showError) {
+                window.showError('Impossible de démarrer le téléchargement');
+            }
+        }
+    },
+    
+    handlePreviewClick: async function(e) {
+        e.stopPropagation();
+        const courseId = e.currentTarget.dataset.courseId;
+        
+        CFLogger.log('Preview button clicked', { courseId });
+        
+        if (window.showCourseDetails) {
+            window.showCourseDetails(courseId);
+        } else {
+            // Implémenter une preview basique
+            this.showCoursePreview(courseId);
+        }
+    },
+    
+    handleMoreOptionsClick: function(e) {
+        e.stopPropagation();
+        const courseId = e.currentTarget.dataset.courseId;
+        
+        CFLogger.log('More options clicked', { courseId });
+        
+        // Créer un menu contextuel
+        this.showCourseOptionsMenu(courseId, e.currentTarget);
+    },
+    
+    handleCardClick: function(e) {
+        // Ignorer si clic sur un bouton
+        if (e.target.closest('button')) return;
+        
+        const card = e.currentTarget;
+        const courseId = card.dataset.courseId;
+        const isDownloaded = card.dataset.isDownloaded === 'true';
+        
+        CFLogger.log('Course card clicked', { courseId, isDownloaded });
+        
+        if (isDownloaded) {
+            if (window.openCoursePlayer) {
+                window.openCoursePlayer(courseId);
+            } else if (window.openCourse) {
+                window.openCourse(courseId);
+            }
+        } else {
+            // Afficher les détails du cours
+            this.showCoursePreview(courseId);
+        }
+    },
+    
+    // Télécharger un cours
+    downloadCourse: async function(courseId, options = {}) {
+        CFLogger.log('Starting course download', { courseId, options });
+        
+        if (!window.electronAPI || !window.electronAPI.download) {
+            throw new Error('API de téléchargement non disponible');
+        }
+        
+        try {
+            const result = await window.electronAPI.download.downloadCourse({
+                courseId: courseId,
+                options: {
+                    includeVideos: options.includeVideos !== false,
+                    includeDocuments: options.includeDocuments !== false,
+                    compress: options.compress || false,
+                    priority: options.priority || 5
+                }
+            });
+            
+            return result;
+        } catch (error) {
+            CFLogger.error('Download error:', error);
+            throw error;
+        }
+    },
+    
+    // Afficher un aperçu du cours
+    showCoursePreview: async function(courseId) {
+        CFLogger.log('Showing course preview', { courseId });
+        
+        try {
+            // Récupérer les détails du cours
+            const response = await window.electronAPI.api.getCourseDetails(courseId);
+            
+            if (response.success && response.course) {
+                const course = response.course;
+                
+                // Créer un modal de preview
+                const modal = document.createElement('div');
+                modal.className = 'modal-backdrop';
+                modal.innerHTML = `
+                    <div class="modal" style="max-width: 800px;">
+                        <div class="modal-header">
+                            <h3 class="modal-title">${this.escapeHtml(course.title)}</h3>
+                            <button class="btn btn-icon" onclick="this.closest('.modal-backdrop').remove()">×</button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="course-preview">
+                                ${course.thumbnail ? `
+                                <img src="${course.thumbnail}" alt="${this.escapeHtml(course.title)}" 
+                                     class="course-preview-image" style="width: 100%; margin-bottom: 20px;">
+                                ` : ''}
+                                
+                                <div class="course-preview-meta">
+                                    <p><strong>Instructeur:</strong> ${this.escapeHtml(course.instructor_name || 'Non spécifié')}</p>
+                                    <p><strong>Durée:</strong> ${course.duration || 'Non spécifiée'}</p>
+                                    <p><strong>Leçons:</strong> ${course.lessons_count || 0}</p>
+                                    ${course.rating ? `<p><strong>Note:</strong> ⭐ ${course.rating}/5</p>` : ''}
+                                </div>
+                                
+                                ${course.description ? `
+                                <div class="course-preview-description">
+                                    <h4>Description</h4>
+                                    <p>${this.escapeHtml(course.description)}</p>
+                                </div>
+                                ` : ''}
+                                
+                                ${course.sections && course.sections.length > 0 ? `
+                                <div class="course-preview-sections">
+                                    <h4>Contenu du cours</h4>
+                                    <ul>
+                                        ${course.sections.map(section => `
+                                            <li>
+                                                <strong>${this.escapeHtml(section.title)}</strong>
+                                                ${section.lessons ? `
+                                                <ul>
+                                                    ${section.lessons.map(lesson => `
+                                                        <li>${this.escapeHtml(lesson.title)} 
+                                                            ${lesson.duration ? `(${lesson.duration})` : ''}
+                                                        </li>
+                                                    `).join('')}
+                                                </ul>
+                                                ` : ''}
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary" onclick="this.closest('.modal-backdrop').remove()">Fermer</button>
+                            <button class="btn btn-primary" onclick="CourseFunctions.downloadCourseFromPreview('${courseId}', this)">
+                                Télécharger ce cours
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+            } else {
+                if (window.showError) {
+                    window.showError('Impossible de charger les détails du cours');
+                }
+            }
+        } catch (error) {
+            CFLogger.error('Error showing preview:', error);
+            if (window.showError) {
+                window.showError('Erreur lors du chargement de l\'aperçu');
+            }
+        }
+    },
+    
+    // Télécharger un cours depuis la preview
+    downloadCourseFromPreview: async function(courseId, button) {
+        button.disabled = true;
+        button.innerHTML = '<span class="spinner spinner-small"></span> Téléchargement...';
+        
+        try {
+            const result = await this.downloadCourse(courseId);
+            
+            if (result.success) {
+                button.closest('.modal-backdrop').remove();
+                
+                if (window.showInfo) {
+                    window.showInfo('Téléchargement démarré');
+                }
+                
+                if (window.navigateTo) {
+                    window.navigateTo('downloads');
+                }
+            } else {
+                button.disabled = false;
+                button.innerHTML = 'Télécharger ce cours';
+                
+                if (window.showError) {
+                    window.showError(result.error || 'Erreur lors du téléchargement');
+                }
+            }
+        } catch (error) {
+            button.disabled = false;
+            button.innerHTML = 'Télécharger ce cours';
+            
+            if (window.showError) {
+                window.showError('Impossible de démarrer le téléchargement');
+            }
+        }
+    },
+    
+    // Afficher le menu d'options pour un cours
+    showCourseOptionsMenu: function(courseId, buttonElement) {
+        // Supprimer tout menu existant
+        const existingMenu = document.querySelector('.course-options-menu');
+        if (existingMenu) {
+            existingMenu.remove();
+        }
+        
+        // Créer le nouveau menu
+        const menu = document.createElement('div');
+        menu.className = 'course-options-menu';
+        menu.innerHTML = `
+            <div class="options-menu-item" onclick="CourseFunctions.updateCourse('${courseId}')">
+                🔄 Vérifier les mises à jour
+            </div>
+            <div class="options-menu-item" onclick="CourseFunctions.exportCourse('${courseId}')">
+                📤 Exporter le cours
+            </div>
+            <div class="options-menu-item" onclick="CourseFunctions.resetProgress('${courseId}')">
+                🔃 Réinitialiser la progression
+            </div>
+            <div class="options-menu-item danger" onclick="CourseFunctions.deleteCourse('${courseId}')">
+                🗑️ Supprimer le cours
+            </div>
+        `;
+        
+        // Positionner le menu
+        const rect = buttonElement.getBoundingClientRect();
+        menu.style.position = 'absolute';
+        menu.style.top = `${rect.bottom + 5}px`;
+        menu.style.right = `${window.innerWidth - rect.right}px`;
+        
+        document.body.appendChild(menu);
+        
+        // Fermer le menu en cliquant ailleurs
+        const closeMenu = (e) => {
+            if (!menu.contains(e.target) && e.target !== buttonElement) {
+                menu.remove();
+                document.removeEventListener('click', closeMenu);
+            }
+        };
+        
+        setTimeout(() => {
+            document.addEventListener('click', closeMenu);
+        }, 100);
+    },
+    
+    // Mettre à jour un cours
+    updateCourse: async function(courseId) {
+        CFLogger.log('Checking for course updates', { courseId });
+        
+        if (window.showInfo) {
+            window.showInfo('Vérification des mises à jour...');
+        }
+        
+        // TODO: Implémenter la vérification des mises à jour
+        setTimeout(() => {
+            if (window.showInfo) {
+                window.showInfo('Le cours est à jour');
+            }
+        }, 2000);
+    },
+    
+    // Exporter un cours
+    exportCourse: async function(courseId) {
+        CFLogger.log('Exporting course', { courseId });
+        
+        if (window.showInfo) {
+            window.showInfo('Fonctionnalité d\'export en cours de développement');
+        }
+    },
+    
+    // Réinitialiser la progression
+    resetProgress: async function(courseId) {
+        if (!confirm('Êtes-vous sûr de vouloir réinitialiser votre progression pour ce cours ?')) {
+            return;
+        }
+        
+        CFLogger.log('Resetting course progress', { courseId });
+        
+        try {
+            // TODO: Implémenter la réinitialisation de la progression
+            if (window.showSuccess) {
+                window.showSuccess('Progression réinitialisée');
+            }
+        } catch (error) {
+            CFLogger.error('Error resetting progress:', error);
+            if (window.showError) {
+                window.showError('Erreur lors de la réinitialisation');
+            }
+        }
+    },
+    
+    // Supprimer un cours
+    deleteCourse: async function(courseId) {
+        if (!confirm('Êtes-vous sûr de vouloir supprimer ce cours ? Cette action est irréversible.')) {
+            return;
+        }
+        
+        CFLogger.log('Deleting course', { courseId });
+        
+        try {
+            const result = await window.electronAPI.db.deleteCourse(courseId);
+            
+            if (result.success) {
+                // Retirer de la liste des cours téléchargés
+                this.downloadedCourses.delete(String(courseId));
+                
+                if (window.showSuccess) {
+                    window.showSuccess('Cours supprimé avec succès');
+                }
+                
+                // Rafraîchir la page actuelle
+                if (window.loadPageContent) {
+                    const currentPage = document.querySelector('.nav-item.active')?.dataset.page;
+                    window.loadPageContent(currentPage || 'dashboard');
+                }
+                
+                // Émettre un événement
+                if (window.electronAPI) {
+                    window.electronAPI.emit('course-deleted', { courseId });
+                }
+            } else {
+                if (window.showError) {
+                    window.showError('Erreur lors de la suppression du cours');
+                }
+            }
+        } catch (error) {
+            CFLogger.error('Error deleting course:', error);
+            if (window.showError) {
+                window.showError('Impossible de supprimer le cours');
+            }
+        }
+    },
+
+    // Afficher le modal de téléchargement
+    showDownloadModal: async function() {
+        CFLogger.log('Opening download modal');
+        
+        const modal = document.getElementById('download-modal');
+        if (!modal) {
+            CFLogger.error('Download modal element not found');
+            return;
+        }
+        
+        modal.classList.remove('hidden');
+        
+        // Rafraîchir la liste des cours téléchargés
+        await this.refreshDownloadedCourses();
+        
+        // Afficher un loader
+        const courseSelect = document.getElementById('course-select');
+        if (courseSelect) {
+            courseSelect.innerHTML = '<option value="">Chargement des cours...</option>';
+        }
+        
+        try {
+            // Vérifier la connexion
+            if (window.ConnectionState && !window.ConnectionState.isOnline) {
+                courseSelect.innerHTML = '<option value="">Connexion Internet requise</option>';
+                return;
+            }
+            
+            if (!window.electronAPI || !window.electronAPI.api) {
+                CFLogger.error('API not available');
+                courseSelect.innerHTML = '<option value="">Erreur: API non disponible</option>';
+                return;
+            }
+            
+            CFLogger.debug('Fetching user courses');
+            
+            // Récupérer les cours disponibles
+            const response = await window.electronAPI.api.getUserCourses({
+                enrolled_only: true,
+                page: 1,
+                per_page: 100
+            });
+            
+            CFLogger.debug('API Response', { 
+                success: response.success, 
+                coursesCount: response.courses?.length 
+            });
+            
+            if (response.success && response.courses && response.courses.length > 0) {
+                courseSelect.innerHTML = '<option value="">Sélectionnez un cours</option>';
+                
+                // Filtrer les cours non téléchargés
+                const availableCourses = response.courses.filter(course => {
+                    const courseId = String(course.id || course.course_id);
+                    return !this.isCourseDownloaded(courseId);
+                });
+                
+                CFLogger.log(`${availableCourses.length} cours disponibles sur ${response.courses.length}`);
+                
+                if (availableCourses.length === 0) {
+                    courseSelect.innerHTML = '<option value="">Tous les cours sont déjà téléchargés</option>';
+                } else {
+                    availableCourses.forEach(course => {
+                        const option = document.createElement('option');
+                        option.value = course.id || course.course_id;
+                        option.textContent = course.title;
+                        option.dataset.lessons = course.lessons_count || 0;
+                        option.dataset.duration = course.duration || '';
+                        courseSelect.appendChild(option);
+                    });
+                    
+                    // Ajouter un listener pour afficher les infos du cours sélectionné
+                    courseSelect.addEventListener('change', (e) => {
+                        const selectedOption = e.target.options[e.target.selectedIndex];
+                        const infoDiv = document.getElementById('download-info');
+                        
+                        if (selectedOption.value && infoDiv) {
+                            infoDiv.innerHTML = `
+                                <div class="course-info-preview">
+                                    <p><strong>${selectedOption.textContent}</strong></p>
+                                    <p>📚 ${selectedOption.dataset.lessons} leçons</p>
+                                    ${selectedOption.dataset.duration ? 
+                                        `<p>⏱️ ${selectedOption.dataset.duration}</p>` : ''}
+                                </div>
+                            `;
+                            infoDiv.classList.remove('hidden');
+                        } else if (infoDiv) {
+                            infoDiv.classList.add('hidden');
+                        }
+                    });
+                }
+            } else {
+                courseSelect.innerHTML = '<option value="">Aucun cours disponible</option>';
+                
+                if (!response.success) {
+                    CFLogger.error('API call failed', { error: response.error });
+                    
+                    if (window.showError) {
+                        window.showError(response.error || 'Erreur lors du chargement des cours');
+                    }
+                }
+            }
+        } catch (error) {
+            CFLogger.error('Exception in showDownloadModal:', error);
+            
+            if (courseSelect) {
+                courseSelect.innerHTML = '<option value="">Erreur de chargement</option>';
+            }
+            
+            if (window.showError) {
+                window.showError(`Impossible de charger la liste des cours: ${error.message}`);
+            }
+        }
+    },
+
+    // Fonction utilitaire pour échapper le HTML
+    escapeHtml: function(text) {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+};
+
+// Initialiser le module quand le DOM est prêt
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        CourseFunctions.init();
+    });
+} else {
+    CourseFunctions.init();
+}
+
+// Exporter les fonctions globalement
+window.CourseFunctions = CourseFunctions;
+
+// Alias pour compatibilité
+window.createCourseCard = CourseFunctions.createCourseCard.bind(CourseFunctions);
+window.attachCourseEventListeners = CourseFunctions.attachCourseEventListeners.bind(CourseFunctions);
+window.showDownloadModal = CourseFunctions.showDownloadModal.bind(CourseFunctions);
+window.downloadSingleCourse = CourseFunctions.downloadCourse.bind(CourseFunctions);
+window.showCourseDetails = CourseFunctions.showCoursePreview.bind(CourseFunctions);
+
+// CSS additionnel pour le menu d'options
+const style = document.createElement('style');
+style.textContent = `
+.course-options-menu {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    min-width: 200px;
+    z-index: 1000;
+}
+
+.options-menu-item {
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.options-menu-item:last-child {
+    border-bottom: none;
+}
+
+.options-menu-item:hover {
+    background-color: #f5f5f5;
+}
+
+.options-menu-item.danger {
+    color: #dc3545;
+}
+
+.options-menu-item.danger:hover {
+    background-color: #fee;
+}
+
+.course-info-preview {
+    background: #f8f9fa;
+    padding: 12px;
+    border-radius: 4px;
+    margin-top: 10px;
+}
+
+.course-info-preview p {
+    margin: 4px 0;
+}
+
+.course-preview-image {
+    width: 100%;
+    max-height: 300px;
+    object-fit: cover;
+    border-radius: 4px;
+}
+
+.course-preview-sections ul {
+    margin-left: 20px;
+}
+
+.course-preview-sections li {
+    margin: 8px 0;
+}
+`;
+document.head.appendChild(style);
+
+CFLogger.log('CourseFunctions module loaded successfully');

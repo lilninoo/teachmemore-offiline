@@ -1,0 +1,414 @@
+// course-manager.js - Module centralisé de gestion des cours
+// Ce module remplace les duplications entre courses.js, course-functions.js et app.js
+
+class CourseManager {
+    constructor() {
+        this.courses = new Map();
+        this.downloadedCourses = new Set();
+        this.listeners = new Map();
+        this.initialized = false;
+        this.lastUpdate = null;
+        
+        // Configuration
+        this.config = {
+            refreshInterval: 30000, // 30 secondes
+            cacheTimeout: 300000,   // 5 minutes
+            maxRetries: 3
+        };
+        
+        // État de connexion
+        this.isOnline = navigator.onLine;
+        
+        console.log('[CourseManager] Initialisation...');
+    }
+    
+    // Initialisation du module
+    async initialize() {
+        if (this.initialized) {
+            console.log('[CourseManager] Déjà initialisé');
+            return;
+        }
+        
+        try {
+            console.log('[CourseManager] Début de l\'initialisation');
+            
+            // Charger les cours depuis la base locale
+            await this.loadLocalCourses();
+            
+            // Écouter les événements de téléchargement
+            this.setupDownloadListeners();
+            
+            // Écouter les changements de connexion
+            window.addEventListener('online', () => this.handleConnectionChange(true));
+            window.addEventListener('offline', () => this.handleConnectionChange(false));
+            
+            // Démarrer la synchronisation automatique
+            this.startAutoSync();
+            
+            this.initialized = true;
+            console.log('[CourseManager] Initialisation terminée');
+            
+            // Émettre un événement d'initialisation
+            this.emit('initialized', { coursesCount: this.courses.size });
+            
+        } catch (error) {
+            console.error('[CourseManager] Erreur d\'initialisation:', error);
+            throw error;
+        }
+    }
+    
+    // Charger les cours depuis la base locale
+    async loadLocalCourses() {
+        console.log('[CourseManager] Chargement des cours locaux...');
+        
+        try {
+            const result = await window.electronAPI.db.getAllCourses();
+            
+            if (result.success && result.result) {
+                this.courses.clear();
+                this.downloadedCourses.clear();
+                
+                result.result.forEach(course => {
+                    this.courses.set(course.course_id, {
+                        ...course,
+                        isDownloaded: true,
+                        isLocal: true,
+                        lastSynced: new Date().toISOString()
+                    });
+                    this.downloadedCourses.add(course.course_id);
+                });
+                
+                console.log(`[CourseManager] ${this.courses.size} cours locaux chargés`);
+                this.lastUpdate = Date.now();
+            }
+        } catch (error) {
+            console.error('[CourseManager] Erreur chargement local:', error);
+            throw error;
+        }
+    }
+    
+    // Charger les cours depuis l'API
+    async loadOnlineCourses() {
+        if (!this.isOnline) {
+            console.log('[CourseManager] Pas de connexion, chargement en ligne ignoré');
+            return;
+        }
+        
+        console.log('[CourseManager] Chargement des cours en ligne...');
+        
+        try {
+            const result = await window.electronAPI.api.getUserCourses({
+                page: 1,
+                per_page: 100,
+                enrolled_only: true
+            });
+            
+            if (result.success && result.courses) {
+                // Fusionner avec les cours existants
+                result.courses.forEach(course => {
+                    const courseId = course.id || course.course_id;
+                    const existing = this.courses.get(courseId);
+                    
+                    if (existing && existing.isDownloaded) {
+                        // Fusionner les données
+                        this.courses.set(courseId, {
+                            ...existing,
+                            ...course,
+                            course_id: courseId,
+                            isDownloaded: true,
+                            isOnline: true,
+                            lastSynced: new Date().toISOString()
+                        });
+                    } else {
+                        // Nouveau cours en ligne
+                        this.courses.set(courseId, {
+                            ...course,
+                            course_id: courseId,
+                            isDownloaded: this.downloadedCourses.has(courseId),
+                            isOnline: true,
+                            lastSynced: new Date().toISOString()
+                        });
+                    }
+                });
+                
+                console.log(`[CourseManager] ${result.courses.length} cours en ligne traités`);
+                this.lastUpdate = Date.now();
+            }
+        } catch (error) {
+            console.error('[CourseManager] Erreur chargement en ligne:', error);
+            // Ne pas propager l'erreur pour permettre le fonctionnement hors ligne
+        }
+    }
+    
+    // Obtenir tous les cours
+    async getAllCourses(forceRefresh = false) {
+        console.log('[CourseManager] getAllCourses appelé', { forceRefresh });
+        
+        // Vérifier si on doit rafraîchir
+        const shouldRefresh = forceRefresh || 
+                            !this.lastUpdate || 
+                            (Date.now() - this.lastUpdate > this.config.cacheTimeout);
+        
+        if (shouldRefresh) {
+            await this.refreshCourses();
+        }
+        
+        return Array.from(this.courses.values());
+    }
+    
+    // Obtenir uniquement les cours téléchargés
+    getDownloadedCourses() {
+        return Array.from(this.courses.values()).filter(course => course.isDownloaded);
+    }
+    
+    // Obtenir uniquement les cours disponibles (non téléchargés)
+    getAvailableCourses() {
+        return Array.from(this.courses.values()).filter(course => !course.isDownloaded);
+    }
+    
+    // Obtenir un cours spécifique
+    getCourse(courseId) {
+        return this.courses.get(courseId);
+    }
+    
+    // Rafraîchir la liste des cours
+    async refreshCourses() {
+        console.log('[CourseManager] Rafraîchissement des cours...');
+        
+        try {
+            // Charger d'abord les cours locaux
+            await this.loadLocalCourses();
+            
+            // Puis les cours en ligne si connecté
+            if (this.isOnline) {
+                await this.loadOnlineCourses();
+            }
+            
+            // Émettre un événement de mise à jour
+            this.emit('courses-updated', {
+                total: this.courses.size,
+                downloaded: this.downloadedCourses.size
+            });
+            
+            console.log('[CourseManager] Rafraîchissement terminé');
+            
+        } catch (error) {
+            console.error('[CourseManager] Erreur lors du rafraîchissement:', error);
+            throw error;
+        }
+    }
+    
+    // Marquer un cours comme téléchargé
+    async markCourseAsDownloaded(courseId, courseData = null) {
+        console.log('[CourseManager] Marquage du cours comme téléchargé:', courseId);
+        
+        try {
+            // Si on a des données de cours, les utiliser
+            if (courseData) {
+                this.courses.set(courseId, {
+                    ...courseData,
+                    course_id: courseId,
+                    isDownloaded: true,
+                    downloadedAt: new Date().toISOString()
+                });
+            } else {
+                // Sinon, mettre à jour le cours existant
+                const existing = this.courses.get(courseId);
+                if (existing) {
+                    existing.isDownloaded = true;
+                    existing.downloadedAt = new Date().toISOString();
+                }
+            }
+            
+            this.downloadedCourses.add(courseId);
+            
+            // Émettre un événement
+            this.emit('course-downloaded', { courseId });
+            
+            // Rafraîchir depuis la base locale pour s'assurer de la cohérence
+            await this.loadLocalCourses();
+            
+            console.log('[CourseManager] Cours marqué comme téléchargé avec succès');
+            
+        } catch (error) {
+            console.error('[CourseManager] Erreur lors du marquage:', error);
+            throw error;
+        }
+    }
+    
+    // Supprimer un cours
+    async deleteCourse(courseId) {
+        console.log('[CourseManager] Suppression du cours:', courseId);
+        
+        try {
+            const result = await window.electronAPI.db.deleteCourse(courseId);
+            
+            if (result.success) {
+                this.courses.delete(courseId);
+                this.downloadedCourses.delete(courseId);
+                
+                // Émettre un événement
+                this.emit('course-deleted', { courseId });
+                
+                console.log('[CourseManager] Cours supprimé avec succès');
+            }
+            
+            return result;
+            
+        } catch (error) {
+            console.error('[CourseManager] Erreur lors de la suppression:', error);
+            throw error;
+        }
+    }
+    
+    // Configuration des écouteurs de téléchargement
+    setupDownloadListeners() {
+        console.log('[CourseManager] Configuration des écouteurs de téléchargement...');
+        
+        // Écouter la fin des téléchargements
+        window.electronAPI.on('download-manager:download-completed', async (data) => {
+            console.log('[CourseManager] Téléchargement terminé détecté:', data);
+            
+            // Attendre un peu pour s'assurer que la DB est à jour
+            setTimeout(async () => {
+                await this.markCourseAsDownloaded(data.courseId, data.course);
+                
+                // Forcer le rafraîchissement de l'interface
+                this.emit('refresh-ui', { courseId: data.courseId });
+            }, 500);
+        });
+        
+        // Écouter les mises à jour de progression
+        window.electronAPI.on('download-manager:download-progress', (data) => {
+            this.emit('download-progress', data);
+        });
+        
+        // Écouter les erreurs
+        window.electronAPI.on('download-manager:download-error', (data) => {
+            console.error('[CourseManager] Erreur de téléchargement:', data);
+            this.emit('download-error', data);
+        });
+    }
+    
+    // Gestion des changements de connexion
+    handleConnectionChange(isOnline) {
+        console.log('[CourseManager] Changement de connexion:', isOnline ? 'EN LIGNE' : 'HORS LIGNE');
+        
+        this.isOnline = isOnline;
+        
+        if (isOnline) {
+            // Rafraîchir les cours quand on revient en ligne
+            setTimeout(() => {
+                this.refreshCourses().catch(console.error);
+            }, 2000);
+        }
+        
+        this.emit('connection-changed', { isOnline });
+    }
+    
+    // Synchronisation automatique
+    startAutoSync() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+        }
+        
+        this.syncInterval = setInterval(() => {
+            if (this.isOnline) {
+                this.refreshCourses().catch(console.error);
+            }
+        }, this.config.refreshInterval);
+        
+        console.log('[CourseManager] Synchronisation automatique démarrée');
+    }
+    
+    // Arrêter la synchronisation
+    stopAutoSync() {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+            this.syncInterval = null;
+            console.log('[CourseManager] Synchronisation automatique arrêtée');
+        }
+    }
+    
+    // Système d'événements
+    on(event, callback) {
+        if (!this.listeners.has(event)) {
+            this.listeners.set(event, []);
+        }
+        this.listeners.get(event).push(callback);
+    }
+    
+    off(event, callback) {
+        const callbacks = this.listeners.get(event);
+        if (callbacks) {
+            const index = callbacks.indexOf(callback);
+            if (index > -1) {
+                callbacks.splice(index, 1);
+            }
+        }
+    }
+    
+    emit(event, data) {
+        const callbacks = this.listeners.get(event);
+        if (callbacks) {
+            callbacks.forEach(callback => {
+                try {
+                    callback(data);
+                } catch (error) {
+                    console.error(`[CourseManager] Erreur dans le callback de ${event}:`, error);
+                }
+            });
+        }
+    }
+    
+    // Rechercher des cours
+    searchCourses(query) {
+        const lowercaseQuery = query.toLowerCase();
+        return Array.from(this.courses.values()).filter(course => {
+            return course.title?.toLowerCase().includes(lowercaseQuery) ||
+                   course.instructor_name?.toLowerCase().includes(lowercaseQuery) ||
+                   course.description?.toLowerCase().includes(lowercaseQuery);
+        });
+    }
+    
+    // Obtenir des statistiques
+    getStatistics() {
+        const courses = Array.from(this.courses.values());
+        const downloaded = courses.filter(c => c.isDownloaded);
+        
+        return {
+            totalCourses: courses.length,
+            downloadedCourses: downloaded.length,
+            availableCourses: courses.length - downloaded.length,
+            completedCourses: downloaded.filter(c => c.completed || c.progress >= 100).length,
+            totalSize: downloaded.reduce((sum, c) => sum + (c.file_size || 0), 0),
+            averageProgress: downloaded.length > 0 
+                ? downloaded.reduce((sum, c) => sum + (c.progress || 0), 0) / downloaded.length
+                : 0
+        };
+    }
+    
+    // Nettoyer le module
+    cleanup() {
+        console.log('[CourseManager] Nettoyage...');
+        
+        this.stopAutoSync();
+        this.listeners.clear();
+        this.courses.clear();
+        this.downloadedCourses.clear();
+        this.initialized = false;
+        
+        console.log('[CourseManager] Nettoyage terminé');
+    }
+}
+
+// Créer une instance unique (Singleton)
+const courseManager = new CourseManager();
+
+// Exporter pour utilisation globale
+window.courseManager = courseManager;
+
+// Exporter aussi comme module si possible
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = courseManager;
+}

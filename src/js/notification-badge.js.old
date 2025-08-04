@@ -1,0 +1,98 @@
+// notification-badge.js - Composant de badge avec animation
+class NotificationBadge {
+    constructor(element) {
+        this.element = element;
+        this.currentValue = 0;
+        this.targetValue = 0;
+        this.animationFrame = null;
+    }
+    
+    // Mettre à jour le badge avec animation
+    update(newValue, animate = true) {
+        console.log(`[NotificationBadge] Mise à jour: ${this.currentValue} -> ${newValue}`);
+        
+        this.targetValue = newValue;
+        
+        if (!animate || this.currentValue === this.targetValue) {
+            this.currentValue = this.targetValue;
+            this.render();
+            return;
+        }
+        
+        // Animation du compteur
+        this.animateValue();
+    }
+    
+    // Animer la valeur
+    animateValue() {
+        if (this.animationFrame) {
+            cancelAnimationFrame(this.animationFrame);
+        }
+        
+        const animate = () => {
+            const diff = this.targetValue - this.currentValue;
+            
+            if (Math.abs(diff) < 0.1) {
+                this.currentValue = this.targetValue;
+                this.render();
+                return;
+            }
+            
+            // Animation fluide
+            this.currentValue += diff * 0.2;
+            this.render();
+            
+            this.animationFrame = requestAnimationFrame(animate);
+        };
+        
+        animate();
+    }
+    
+    // Afficher la valeur
+    render() {
+        if (!this.element) return;
+        
+        const displayValue = Math.round(this.currentValue);
+        this.element.textContent = displayValue;
+        
+        // Ajouter une classe d'animation si la valeur a changé
+        if (this.element.textContent !== displayValue.toString()) {
+            this.element.classList.add('badge-pulse');
+            setTimeout(() => {
+                this.element.classList.remove('badge-pulse');
+            }, 600);
+        }
+        
+        // Effet de surbrillance si nouveau cours
+        if (displayValue > parseInt(this.element.dataset.lastValue || 0)) {
+            this.element.classList.add('badge-highlight');
+            setTimeout(() => {
+                this.element.classList.remove('badge-highlight');
+            }, 1000);
+        }
+        
+        this.element.dataset.lastValue = displayValue;
+    }
+    
+    // Faire pulser le badge
+    pulse() {
+        this.element.classList.add('badge-pulse');
+        setTimeout(() => {
+            this.element.classList.remove('badge-pulse');
+        }, 600);
+    }
+}
+
+// Initialiser le badge
+document.addEventListener('DOMContentLoaded', () => {
+    const badgeElement = document.getElementById('courses-count');
+    if (badgeElement) {
+        window.coursesCountBadge = new NotificationBadge(badgeElement);
+        
+        // S'abonner aux changements
+        window.stateManager.subscribe('courses-count-changed', (data) => {
+            console.log('[NotificationBadge] Nombre de cours changé:', data);
+            window.coursesCountBadge.update(data.newCount, true);
+        });
+    }
+});

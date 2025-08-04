@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Permissions de base pour Electron -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    
+    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+    <true/>
+    
+    <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+    <true/>
+    
+    <!-- Accès au réseau -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- Accès au système de fichiers -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    
+    <key>com.apple.security.files.downloads.read-write</key>
+    <true/>
+    
+    <!-- Stockage de l'app -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.yourcompany.learnpress-offline</string>
+    </array>
+    
+    <!-- Camera et microphone (si nécessaire pour les quiz vidéo) -->
+    <key>com.apple.security.device.camera</key>
+    <false/>
+    
+    <key>com.apple.security.device.microphone</key>
+    <false/>
+    
+    <!-- Impression (pour exporter des certificats) -->
+    <key>com.apple.security.print</key>
+    <true/>
+    
+    <!-- Keychain access pour stocker les tokens de manière sécurisée -->
+    <key>keychain-access-groups</key>
+    <array>
+        <string>$(AppIdentifierPrefix)com.yourcompany.learnpress-offline</string>
+    </array>
+</dict>
+</plist>

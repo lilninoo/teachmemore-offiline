@@ -1,0 +1,154 @@
+// download-ui.js
+class DownloadUI {
+    constructor(courseManager) {
+        this.courseManager = courseManager;
+        this.downloadManager = null;
+        this.activeDownloads = new Map();
+        this.updateInterval = null;
+    }
+
+    async initialize() {
+        // Obtenir le DownloadManager depuis l'API Electron
+        const result = await window.electronAPI.download.getManager();
+        if (result.success) {
+            this.downloadManager = result.manager;
+        }
+        
+        // Écouter les événements
+        this.setupEventListeners();
+    }
+
+    setupEventListeners() {
+        // Écouter les événements du DownloadManager
+        window.electronAPI.on('download-manager:download-started', (data) => {
+            this.handleDownloadStarted(data);
+        });
+
+        window.electronAPI.on('download-manager:download-progress', (data) => {
+            this.handleDownloadProgress(data);
+        });
+
+        window.electronAPI.on('download-manager:download-completed', (data) => {
+            this.handleDownloadCompleted(data);
+            // Notifier CourseManager qu'un cours a été téléchargé
+            this.courseManager.refreshCourses();
+        });
+
+        window.electronAPI.on('download-manager:download-error', (data) => {
+            this.handleDownloadError(data);
+        });
+    }
+
+    async renderDownloadsPage() {
+        const container = document.getElementById('downloads-list');
+        if (!container) return;
+
+        try {
+            // Utiliser CourseManager pour obtenir l'état des téléchargements
+            const downloads = await this.courseManager.getDownloads();
+            this.displayDownloads(downloads, container);
+            
+            // Démarrer la mise à jour auto
+            this.startAutoUpdate();
+        } catch (error) {
+            console.error('[DownloadUI] Erreur:', error);
+            container.innerHTML = this.renderError(error);
+        }
+    }
+
+    displayDownloads(downloads, container) {
+        const activeDownloads = downloads.filter(d => 
+            ['downloading', 'preparing', 'queued', 'paused'].includes(d.status)
+        );
+        
+        const completedDownloads = downloads.filter(d => 
+            ['completed', 'error', 'cancelled'].includes(d.status)
+        );
+
+        let html = '';
+
+        if (activeDownloads.length > 0) {
+            html += this.renderDownloadSection('Téléchargements en cours', activeDownloads);
+        }
+
+        if (completedDownloads.length > 0) {
+            html += this.renderDownloadSection('Historique', completedDownloads);
+        }
+
+        if (downloads.length === 0) {
+            html = this.renderEmptyState();
+        }
+
+        container.innerHTML = html;
+        this.attachEventHandlers();
+    }
+
+    renderDownloadSection(title, downloads) {
+        return `
+            <div class="downloads-section">
+                <h3>${title} (${downloads.length})</h3>
+                <div class="downloads-list">
+                    ${downloads.map(d => this.renderDownloadItem(d)).join('')}
+                </div>
+            </div>
+        `;
+    }
+
+    renderDownloadItem(download) {
+        // Obtenir les infos du cours depuis CourseManager
+        const course = this.courseManager.getCourse(download.courseId);
+        const statusInfo = this.getStatusInfo(download.status);
+        
+        return `
+            <div class="download-item ${download.status}" data-download-id="${download.id}">
+                <div class="download-header">
+                    <div class="download-icon">${statusInfo.icon}</div>
+                    <div class="download-info">
+                        <h4>${course?.title || 'Cours inconnu'}</h4>
+                        <div class="download-meta">
+                            <span class="download-status">${statusInfo.text}</span>
+                            ${this.renderDownloadMeta(download)}
+                        </div>
+                    </div>
+                    <div class="download-actions">
+                        ${this.renderDownloadActions(download)}
+                    </div>
+                </div>
+                ${this.renderProgressBar(download)}
+            </div>
+        `;
+    }
+
+    async pauseDownload(downloadId) {
+        try {
+            await this.courseManager.pauseDownload(downloadId);
+            showInfo('Téléchargement mis en pause');
+        } catch (error) {
+            showError('Erreur lors de la pause');
+        }
+    }
+
+    async resumeDownload(downloadId) {
+        try {
+            await this.courseManager.resumeDownload(downloadId);
+            showInfo('Téléchargement repris');
+        } catch (error) {
+            showError('Erreur lors de la reprise');
+        }
+    }
+
+    async cancelDownload(downloadId) {
+        if (confirm('Annuler ce téléchargement ?')) {
+            try {
+                await this.courseManager.cancelDownload(downloadId);
+                showInfo('Téléchargement annulé');
+            } catch (error) {
+                showError('Erreur lors de l\'annulation');
+            }
+        }
+    }
+
+    cleanup() {
+        this.stopAutoUpdate();
+    }
+}
