@@ -44,25 +44,24 @@ class SecureMediaHandler {
     async createStreamUrl(filePath, mimeType = 'video/mp4') {
         console.log('[SecureMediaHandler] Création d\'URL de streaming pour:', filePath);
         
-        // Vérifier le cache
-        if (this.streamUrls.has(filePath)) {
-            console.log('[SecureMediaHandler] URL trouvée dans le cache');
-            return this.streamUrls.get(filePath);
-        }
-
         try {
-            // S'assurer que le serveur est initialisé
-            if (!this.initialized) {
-                await this.initialize();
+            // Vérifier d'abord si le fichier existe
+            const fileExists = await this.checkFileExists(filePath);
+            if (!fileExists) {
+                throw new Error('Fichier introuvable: ' + filePath);
             }
-
-            // Vérifier si le fichier est chiffré
-            const isEncrypted = await this.isFileEncrypted(filePath);
             
-            if (!isEncrypted) {
-                console.log('[SecureMediaHandler] Fichier non chiffré, utilisation directe');
+
+        // Si pas de serveur initialisé, essayer quand même
+        if (!this.initialized) {
+            try {
+                await this.initialize();
+            } catch (e) {
+                console.warn('[SecureMediaHandler] Initialisation échouée, tentative directe');
+                // Retourner une URL file:// directe si l'init échoue
                 return `file://${filePath}`;
             }
+        }
 
             // Créer une URL de streaming sécurisée
             const result = await window.electronAPI.media.createSecureStream(filePath, mimeType);

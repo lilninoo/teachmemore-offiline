@@ -59,33 +59,24 @@ window.PlayerState = PlayerState;
 async function loadMediaWithLocalFirst(lessonId) {
     console.log('[Player] Recherche du média local pour la leçon:', lessonId);
     
+    console.log('[Player] Recherche du média local pour la leçon:', lessonId);
+    
     try {
-        // Vérifier d'abord si on a des médias locaux
-        const localMedia = await window.electronAPI.db.getLessonMedia(lessonId);
+        // Récupérer les médias locaux
+        const localMediaResult = await window.electronAPI.db.getLessonMedia(lessonId);
         
-        if (localMedia && localMedia.length > 0) {
-            console.log('[Player] Médias locaux trouvés:', localMedia.length);
-            
-            // Trouver le média principal (vidéo ou audio)
-            const mainMedia = localMedia.find(m => ['video', 'audio'].includes(m.type));
+        if (localMediaResult.success && localMediaResult.media && localMediaResult.media.length > 0) {
+            const mainMedia = localMediaResult.media.find(m => ['video', 'audio'].includes(m.type));
             
             if (mainMedia && mainMedia.path) {
-                console.log('[Player] Utilisation du média local:', mainMedia.path);
-                
-                // Vérifier que le fichier existe
-                const fileExists = await window.electronAPI.checkFileExists(mainMedia.path);
-                
-                if (fileExists) {
-                    return {
-                        success: true,
-                        url: `file://${mainMedia.path}`,
-                        type: mainMedia.type,
-                        isLocal: true,
-                        metadata: mainMedia
-                    };
-                } else {
-                    console.warn('[Player] Fichier local introuvable:', mainMedia.path);
-                }
+                // NE PAS vérifier la connexion pour les médias locaux
+                return {
+                    success: true,
+                    url: mainMedia.path, // Laisser loadVideo gérer le streaming
+                    type: mainMedia.type,
+                    isLocal: true,
+                    metadata: mainMedia
+                };
             }
         }
         
@@ -4946,6 +4937,27 @@ const playerStyles = `
 .loading-spinner.hidden {
     display: none !important;
 }
+
+// Ajouter ces cas dans la fonction initKeyboardShortcuts (ligne ~850)
+
+case 'p':
+    if (e.shiftKey) {
+        e.preventDefault();
+        this.loadPreviousLesson();
+    } else {
+        e.preventDefault();
+        this.togglePiP();
+    }
+    break;
+case 'n':
+    if (e.shiftKey) {
+        e.preventDefault();
+        this.loadNextLesson();
+    } else {
+        e.preventDefault();
+        this.addNote();
+    }
+    break;
 </style>
 `;
 

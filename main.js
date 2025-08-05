@@ -581,15 +581,13 @@ async function initializeMediaPlayer() {
     try {
         log.info('Initialisation du lecteur média sécurisé...');
         
-        const encryptionKey = getOrCreateEncryptionKey();
-        mediaPlayer = new SecureMediaPlayer(encryptionKey);
-        await mediaPlayer.initialize();
+        // Utiliser la fonction du context qui gère déjà le singleton
+        mediaPlayer = await context.getSecureMediaPlayer();
         
         log.info('Lecteur média initialisé avec succès');
         
     } catch (error) {
         log.error('Erreur lors de l\'initialisation du lecteur média:', error);
-        // Non critique - continuer sans le lecteur
         mediaPlayer = null;
     }
 }
