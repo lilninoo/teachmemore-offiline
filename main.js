@@ -11,6 +11,8 @@ const contextMenu = require('electron-context-menu');
 const crypto = require('crypto');
 const { getSecureMediaPlayer: rawGetSecureMediaPlayer } = require('./lib/secure-media-player');
 const encryptionKey = getOrCreateEncryptionKey();
+const ConnectionManager = require('./lib/connection-manager');
+let connectionManager = null;
 
 let secureMediaPlayerInstance = null;
 const context = {
@@ -299,15 +301,64 @@ async function checkMembershipStatus() {
     if (!apiClient || !apiClient.token) return;
     
     try {
+        // NOUVEAU : Cache pour éviter les vérifications trop fréquentes
+        const lastCheck = store.get('lastMembershipCheck');
+        const now = Date.now();
+        
+        // Vérifier seulement toutes les 5 minutes
+        if (lastCheck && (now - lastCheck) < 300000) {
+            return;
+        }
+        
+        log.info('Vérification du statut d\'abonnement...');
         const result = await apiClient.verifySubscription();
+        
+        // Sauvegarder le timestamp de la dernière vérification
+        store.set('lastMembershipCheck', now);
+        
+        // NOUVEAU : Gestion plus intelligente des erreurs
+        if (result.success === false) {
+            // Si c'est un problème de token, essayer de le rafraîchir
+            if (result.reason === 'unauthorized' || result.reason === 'refresh_token_expired') {
+                log.warn('Token invalide détecté, tentative de refresh...');
+                
+                try {
+                    const refreshResult = await apiClient.refreshAccessToken();
+                    if (refreshResult.success) {
+                        // Réessayer la vérification avec le nouveau token
+                        const retryResult = await apiClient.verifySubscription();
+                        if (retryResult.success && retryResult.isActive) {
+                            handleActiveMembership(retryResult);
+                            return;
+                        }
+                    }
+                } catch (refreshError) {
+                    log.error('Échec du refresh lors de la vérification membership:', refreshError);
+                }
+            }
+            
+            // Si c'est une erreur réseau, ne pas déconnecter
+            if (result.type === 'network_error') {
+                log.warn('Erreur réseau lors de la vérification, ignorée');
+                return;
+            }
+        }
         
         if (!result.success || !result.isActive) {
             handleInactiveMembership(result);
         } else {
             handleActiveMembership(result);
         }
+        
     } catch (error) {
+        // NOUVEAU : En cas d'erreur, ne pas déconnecter l'utilisateur
         log.error('Erreur lors de la vérification de l\'abonnement:', error);
+        
+        // Si c'est une erreur réseau, continuer normalement
+        if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
+            log.info('Connexion impossible, mode hors ligne activé');
+            return;
+        }
     }
 }
 
@@ -485,6 +536,20 @@ async function initializeApp() {
         
         // Créer le gestionnaire de téléchargement
         await initializeDownloadManager();
+        
+        // NOUVEAU CODE À AJOUTER ICI ↓↓↓
+        // Initialiser le gestionnaire de connexion
+        connectionManager = new ConnectionManager(store.get('apiUrl'));
+        connectionManager.onStatusChange((isOnline) => {
+            log.info(`Statut de connexion changé: ${isOnline ? 'En ligne' : 'Hors ligne'}`);
+            
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('connection-status-changed', { isOnline });
+            }
+        });
+        connectionManager.startMonitoring();
+        log.info('Gestionnaire de connexion initialisé');
+        // FIN DU NOUVEAU CODE ↑↑↑
         
         // Démarrer la maintenance
         startMaintenance();
@@ -1052,6 +1117,41 @@ app.whenReady().then(async () => {
         );
         
         app.quit();
+    }
+});
+
+ipcMain.on('refresh-failed', async (event, data) => {
+    log.warn('Échec du refresh token détecté');
+    
+    if (data.canRetry) {
+        // Proposer une reconnexion
+        const choice = await dialog.showMessageBox(mainWindow, {
+            type: 'question',
+            title: 'Session expirée',
+            message: 'Votre session a expiré. Voulez-vous vous reconnecter automatiquement ?',
+            buttons: ['Reconnecter', 'Déconnecter'],
+            defaultId: 0,
+            cancelId: 1
+        });
+        
+        if (choice.response === 0) {
+            // Tenter une reconnexion automatique
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('show-auto-reconnect');
+            }
+        } else {
+            // Déconnexion manuelle
+            if (apiClient) {
+                apiClient.clearTokens();
+            }
+            store.delete('token');
+            store.delete('refreshToken');
+            store.delete('tokenExpiry');
+            
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send('force-logout');
+            }
+        }
     }
 });
 

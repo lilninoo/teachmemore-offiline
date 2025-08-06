@@ -111,6 +111,8 @@ async function loadMediaWithLocalFirst(lessonId) {
     }
 }
 
+
+
 // Modifier loadLessonContent pour utiliser loadMediaWithLocalFirst
 async function loadLessonContent(lesson) {
     console.log('[Player] Chargement du contenu de la leçon:', lesson.title);
@@ -455,8 +457,28 @@ async loadVideo() {
     try {
         // Déterminer le chemin de la vidéo
         let videoPath = null;
+        let isEncrypted = false;
         
-        if (PlayerState.currentLesson.file_path) {
+        // Vérifier si on a un chemin chiffré
+        if (PlayerState.currentLesson.file_path_encrypted) {
+            console.log('[Player] Chemin chiffré détecté, déchiffrement...');
+            try {
+                // Déchiffrer le chemin
+                const decryptResult = await window.electronAPI.db.decryptPath(
+                    PlayerState.currentLesson.file_path_encrypted
+                );
+                if (decryptResult.success) {
+                    videoPath = decryptResult.path;
+                    isEncrypted = true;
+                } else {
+                    console.warn('[Player] Échec du déchiffrement du chemin');
+                    videoPath = PlayerState.currentLesson.file_path;
+                }
+            } catch (error) {
+                console.error('[Player] Erreur lors du déchiffrement:', error);
+                videoPath = PlayerState.currentLesson.file_path;
+            }
+        } else if (PlayerState.currentLesson.file_path) {
             videoPath = PlayerState.currentLesson.file_path;
         } else if (PlayerState.currentLesson.video_url) {
             videoPath = PlayerState.currentLesson.video_url;
@@ -467,7 +489,22 @@ async loadVideo() {
                 m.type === 'video' || m.mime_type?.startsWith('video/')
             );
             if (videoMedia) {
-                videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
+                // Vérifier si le média a un chemin chiffré
+                if (videoMedia.path_encrypted) {
+                    try {
+                        const decryptResult = await window.electronAPI.db.decryptPath(
+                            videoMedia.path_encrypted
+                        );
+                        if (decryptResult.success) {
+                            videoPath = decryptResult.path;
+                            isEncrypted = true;
+                        }
+                    } catch (error) {
+                        console.error('[Player] Erreur déchiffrement média:', error);
+                    }
+                } else {
+                    videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
+                }
             }
         }
         
@@ -475,20 +512,67 @@ async loadVideo() {
             throw new Error('Aucun chemin vidéo trouvé pour cette leçon');
         }
         
-        console.log('[Player] Chemin vidéo trouvé:', videoPath);
+        console.log('[Player] Chemin vidéo trouvé:', {
+            path: videoPath,
+            isEncrypted: isEncrypted,
+            isUrl: videoPath.startsWith('http'),
+            isAbsolute: videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)
+        });
         
-        // Utiliser le SecureMediaHandler pour obtenir l'URL de streaming
+        // Déterminer comment accéder à la vidéo
         let streamUrl;
         
-        if (window.secureMediaHandler) {
+        // Si c'est une URL HTTP, l'utiliser directement
+        if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+            console.log('[Player] URL HTTP détectée, utilisation directe');
+            streamUrl = videoPath;
+        }
+        // Si le fichier est chiffré et qu'on a un handler sécurisé
+        else if (isEncrypted && window.electronAPI?.media?.createStreamUrl) {
+            console.log('[Player] Fichier chiffré détecté, création d\'un stream sécurisé');
+            
+            try {
+                const streamResult = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
+                
+                if (streamResult.success && streamResult.url) {
+                    streamUrl = streamResult.url;
+                    console.log('[Player] Stream sécurisé créé:', streamUrl);
+                } else {
+                    throw new Error(streamResult.error || 'Échec de création du stream');
+                }
+            } catch (error) {
+                console.error('[Player] Erreur création stream sécurisé:', error);
+                
+                // Fallback : essayer avec le SecureMediaHandler
+                if (window.secureMediaHandler) {
+                    console.log('[Player] Tentative avec SecureMediaHandler...');
+                    streamUrl = await window.secureMediaHandler.createStreamUrl(videoPath, 'video/mp4');
+                } else {
+                    throw new Error('Impossible de créer un stream pour le fichier chiffré');
+                }
+            }
+        }
+        // Si on a le SecureMediaHandler (pour les fichiers locaux non chiffrés)
+        else if (window.secureMediaHandler && !videoPath.startsWith('http')) {
             console.log('[Player] Utilisation du SecureMediaHandler');
             streamUrl = await window.secureMediaHandler.createStreamUrl(videoPath, 'video/mp4');
-        } else {
-            console.warn('[Player] SecureMediaHandler non disponible, utilisation directe');
-            streamUrl = videoPath.startsWith('http') ? videoPath : `file://${videoPath}`;
+        }
+        // Sinon, utiliser le chemin direct
+        else {
+            console.log('[Player] Utilisation du chemin direct');
+            if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
+                streamUrl = `file://${videoPath}`;
+            } else {
+                streamUrl = videoPath;
+            }
         }
         
         console.log('[Player] URL de streaming finale:', streamUrl);
+        
+        // Vérifier que l'URL est valide
+        if (!streamUrl) {
+            throw new Error('URL de streaming invalide');
+        }
         
         // Configurer les événements avant de définir la source
         const loadedDataHandler = () => {
@@ -496,9 +580,11 @@ async loadVideo() {
             this.hideLoading();
             
             // Afficher les contrôles
+            // Afficher les contrôles SANS forcer le display flex
             const videoControls = document.getElementById('video-controls');
             if (videoControls) {
-                videoControls.style.display = 'flex';
+                videoControls.style.display = '';
+                videoControls.classList.remove('hidden');
             }
             
             // Appliquer les paramètres sauvegardés
@@ -514,14 +600,18 @@ async loadVideo() {
             }
         };
         
-        const errorHandler = (e) => {
+        const errorHandler = async (e) => {
             console.error('[Player] ❌ Erreur de chargement vidéo:', e);
             this.hideLoading();
             
             const error = video.error;
             let errorMessage = 'Erreur lors du chargement de la vidéo';
+            let shouldRetryWithoutEncryption = false;
             
             if (error) {
+                console.error('[Player] Code d\'erreur:', error.code);
+                console.error('[Player] Message d\'erreur:', error.message);
+                
                 switch (error.code) {
                     case 1:
                         errorMessage = 'Le chargement a été interrompu';
@@ -531,11 +621,44 @@ async loadVideo() {
                         break;
                     case 3:
                         errorMessage = 'Erreur de décodage - Le fichier peut être corrompu';
+                        shouldRetryWithoutEncryption = isEncrypted;
                         break;
                     case 4:
                         errorMessage = 'Format non supporté ou fichier introuvable';
+                        // Si c'est un fichier chiffré, essayer sans déchiffrement
+                        if (isEncrypted || streamUrl.includes('127.0.0.1')) {
+                            shouldRetryWithoutEncryption = true;
+                        }
                         break;
                 }
+            }
+            
+            // Si on doit réessayer sans chiffrement
+            if (shouldRetryWithoutEncryption && videoPath && !videoPath.startsWith('http')) {
+                console.warn('[Player] Tentative de lecture directe du fichier...');
+                
+                // Réinitialiser les événements
+                video.removeEventListener('loadeddata', loadedDataHandler);
+                video.removeEventListener('error', errorHandler);
+                
+                // Essayer avec le fichier direct
+                const directUrl = videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/) 
+                    ? `file://${videoPath}` 
+                    : videoPath;
+                
+                console.log('[Player] Essai avec URL directe:', directUrl);
+                
+                // Réattacher les événements avec une nouvelle gestion d'erreur
+                video.addEventListener('loadeddata', loadedDataHandler, { once: true });
+                video.addEventListener('error', () => {
+                    console.error('[Player] Échec de la lecture directe aussi');
+                    this.showError('Impossible de lire cette vidéo');
+                    this.displayNoMediaMessage();
+                }, { once: true });
+                
+                video.src = directUrl;
+                video.load();
+                return;
             }
             
             this.showError(errorMessage);
@@ -545,6 +668,21 @@ async loadVideo() {
         // Attacher les événements
         video.addEventListener('loadeddata', loadedDataHandler, { once: true });
         video.addEventListener('error', errorHandler, { once: true });
+        
+        // Ajouter un timeout pour détecter les problèmes de chargement
+        const loadTimeout = setTimeout(() => {
+            console.warn('[Player] Timeout de chargement vidéo');
+            video.removeEventListener('loadeddata', loadedDataHandler);
+            video.removeEventListener('error', errorHandler);
+            this.hideLoading();
+            this.showError('Le chargement de la vidéo prend trop de temps');
+            this.displayNoMediaMessage();
+        }, 30000); // 30 secondes
+        
+        // Annuler le timeout si la vidéo se charge
+        video.addEventListener('loadeddata', () => {
+            clearTimeout(loadTimeout);
+        }, { once: true });
         
         // Charger la vidéo
         video.src = streamUrl;
