@@ -73,7 +73,7 @@
               <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
             </svg>
           </button>
-          <h1 class="header-title">MENU</h1>
+          <h1 class="header-title">LearnPress Offline</h1>
           <span class="user-info">Bonjour, <span id="user-display-name">Utilisateur</span></span>
         </div>
         <div class="header-right">
@@ -329,7 +329,7 @@
         
         <div class="settings-section">
           <h4>À propos</h4>
-          <p>Teachmemore Offline v1.0.0</p>
+          <p>LearnPress Offline v1.0.0</p>
           <p class="text-secondary">Application de formation hors ligne sécurisée</p>
         </div>
       </div>
@@ -353,17 +353,19 @@
     <!-- Le contenu du player sera ajouté dynamiquement -->
   </div>
 
-  <!-- Scripts -->
+  
+  
   <script src="js/utils.js"></script>
   <script src="js/secure-media-handler.js"></script>
   <script src="js/logger.js"></script>
   <script src="js/auth.js"></script>
+  <!--<script src="js/course-functions.js"></script>
+-->
   <script src="js/courses.js"></script>
   <script src="js/player.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/downloads.js"></script>
   <script src="js/progress.js"></script>
-  <script src="js/conflict-resolver.js"></script>
   <script src="js/app.js"></script>
 
 <!-- Script de navigation amélioré -->
@@ -524,7 +526,7 @@
             document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
             newItem.classList.add('active');
             
-            // Toujours utiliser les fonctions globales
+            // Toujours utiliser les fonctions globales (créées localement si nécessaire)
             window.showContentPage(page);
             window.loadPageContent(page);
           });
@@ -548,59 +550,6 @@
       // Lancer la vérification des modules
       checkModulesLoaded();
     });
-
-    // ========== FONCTIONS DE DEBUG (À UTILISER DANS LA CONSOLE) ==========
-    window.debugSyncButton = function() {
-        console.log('=== DEBUG SYNC BUTTON ===');
-        
-        // 1. Vérifier que le bouton existe
-        const syncBtn = document.getElementById('sync-btn');
-        console.log('Bouton sync existe:', !!syncBtn);
-        
-        // 2. Vérifier que syncManager est disponible
-        console.log('syncManager disponible:', !!window.syncManager);
-        
-        // 3. Vérifier l'état de connexion
-        if (typeof ConnectionState !== 'undefined') {
-            console.log('ConnectionState:', ConnectionState);
-        } else {
-            console.log('ConnectionState non défini - navigator.onLine:', navigator.onLine);
-        }
-        
-        // 4. Vérifier les fonctions d'affichage
-        console.log('Fonctions UI disponibles:', {
-            showInfo: typeof window.showInfo,
-            showError: typeof window.showError,
-            showWarning: typeof window.showWarning,
-            showLoader: typeof window.showLoader,
-            hideLoader: typeof window.hideLoader,
-            showSuccess: typeof window.showSuccess
-        });
-        
-        // 5. Tester manuellement le clic
-        if (syncBtn) {
-            console.log('Test de clic sur le bouton...');
-            syncBtn.click();
-        }
-    };
-
-    // Test direct de synchronisation
-    window.testSync = async function() {
-        console.log('=== TEST SYNCHRONISATION DIRECTE ===');
-        
-        if (!window.syncManager) {
-            console.error('syncManager non disponible !');
-            return;
-        }
-        
-        try {
-            console.log('Démarrage de la synchronisation...');
-            const result = await window.syncManager.performFullSync();
-            console.log('Résultat sync:', result);
-        } catch (error) {
-            console.error('Erreur sync:', error);
-        }
-    };
 
     // Fonctions globales pour le debug
     window.debugNavigation = () => {
@@ -638,48 +587,6 @@
       if (window.loadPageContent) {
         window.loadPageContent(page);
       }
-    };
-
-    // Afficher le modal de téléchargement (fonction globale)
-    window.showDownloadModal = async function() {
-        console.log('Ouverture du modal de téléchargement');
-        const modal = document.getElementById('download-modal');
-        
-        if (modal) {
-            modal.classList.remove('hidden');
-            
-            // Charger la liste des cours disponibles
-            const courseSelect = document.getElementById('course-select');
-            if (courseSelect && window.electronAPI && window.electronAPI.api) {
-                courseSelect.innerHTML = '<option value="">Chargement des cours...</option>';
-                
-                try {
-                    const result = await window.electronAPI.api.getUserCourses();
-                    if (result.success && result.courses) {
-                        courseSelect.innerHTML = '<option value="">Sélectionnez un cours</option>';
-                        result.courses.forEach(course => {
-                            const option = document.createElement('option');
-                            option.value = course.id;
-                            option.textContent = course.title;
-                            courseSelect.appendChild(option);
-                        });
-                    }
-                } catch (error) {
-                    console.error('Erreur lors du chargement des cours:', error);
-                    courseSelect.innerHTML = '<option value="">Erreur de chargement</option>';
-                }
-            }
-        }
-    };
-
-    // Fonction pour ouvrir un cours (globale)
-    window.openCourse = function(courseId) {
-        console.log('Ouverture du cours:', courseId);
-        if (window.openCoursePlayer) {
-            window.openCoursePlayer(courseId);
-        } else {
-            console.error('Fonction openCoursePlayer non disponible');
-        }
     };
 </script>
 </body>
