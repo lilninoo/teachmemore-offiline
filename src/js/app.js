@@ -1,4 +1,3 @@
-// app.js - Version COMPLÈTE avec DEBUG AMÉLIORÉ, WINSTON LOGGING et MODE OFFLINE/ONLINE
 
 // Rendre les fonctions disponibles globalement dès le début
 window.loadCoursesPage = null;
@@ -6,75 +5,45 @@ window.loadDownloadsPage = null;
 window.loadProgressPage = null;
 window.loadPageContent = null;
 
+// ==================== CONFIGURATION LOGGING ====================
+// Logger simple pour le renderer (sans Winston)
+const logger = {
+    info: (message, data) => {
+        console.log(`[INFO] ${new Date().toISOString()} - ${message}`, data || '');
+    },
+    error: (message, error) => {
+        console.error(`[ERROR] ${new Date().toISOString()} - ${message}`, error || '');
+    },
+    warn: (message, data) => {
+        console.warn(`[WARN] ${new Date().toISOString()} - ${message}`, data || '');
+    },
+    debug: (message, data) => {
+        console.debug(`[DEBUG] ${new Date().toISOString()} - ${message}`, data || '');
+    }
+};
 
-
-// ==================== CONFIGURATION WINSTON ====================
-const winston = require('winston');
-const path = require('path');
-
-// Configuration du logger Winston pour le renderer
-const logger = winston.createLogger({
-    level: 'debug',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
-            const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-            return `${timestamp} [RENDERER-${level.toUpperCase()}] ${message} ${metaStr}`;
-        })
-    ),
-    transports: [
-        // Console transport uniquement (les logs fichiers sont gérés par le main process)
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            )
-        })
-    ]
-});
+// AppLogger pour compatibilité avec le code existant
+const AppLogger = {
+    log: (message, data = null) => {
+        logger.info(message, data);
+    },
+    error: (message, error = null) => {
+        logger.error(message, error);
+    },
+    warn: (message, data = null) => {
+        logger.warn(message, data);
+    }
+};
 
 // Vérifier que les dépendances sont chargées
 if (typeof window.Utils === 'undefined') {
     console.error('Utils.js doit être chargé avant app.js');
 }
 
-// Si Logger n'existe pas encore, utiliser un fallback
+// Si Logger n'existe pas encore, utiliser le logger créé
 if (!window.Logger) {
-    window.Logger = {
-        info: console.log,
-        error: console.error,
-        warn: console.warn,
-        debug: console.debug
-    };
+    window.Logger = logger;
 }
-
-// AppLogger pour compatibilité avec le code existant
-const AppLogger = {
-    log: (message, data = null) => {
-        logger.info(message, data || {});
-    },
-    error: (message, error = null) => {
-        logger.error(message, error || {});
-    },
-    warn: (message, data = null) => {
-        logger.warn(message, data || {});
-    }
-}
-
-// Rediriger console.log vers Winston
-const originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info,
-    debug: console.debug
-};
-
-console.log = (...args) => logger.info(args.join(' '));
-console.error = (...args) => logger.error(args.join(' '));
-console.warn = (...args) => logger.warn(args.join(' '));
-console.info = (...args) => logger.info(args.join(' '));
-console.debug = (...args) => logger.debug(args.join(' '));
 
 // ==================== ÉTAT GLOBAL ====================
 const AppState = {
@@ -87,33 +56,30 @@ const AppState = {
 // Variables globales
 let currentLesson = null;
 let lessonProgress = 0;
-let courseLoadingInProgress = false; // Protection contre les appels multiples
+let courseLoadingInProgress = false;
 let dashboardUpdateInterval = null;
 
 // ==================== DÉTECTION DE CONNEXION ====================
-
-
 const API_CONFIG = {
-    // Utiliser l'URL de config.js si disponible, sinon fallback
     getApiUrl: function() {
         if (window.AppConfig && window.AppConfig.API_URL) {
             return window.AppConfig.API_URL;
         }
-        // Fallback si config.js n'est pas chargé
         console.error('Configuration API manquante, utilisation de l\'URL par défaut');
-        return 'https://teachmemore.fr'; // Remplacez par votre URL
+        return 'https://teachmemore.fr';
     }
 };
 
-
 // État de connexion
-const ConnectionState = {
+window.ConnectionState = {
     isOnline: navigator.onLine,
     lastCheck: Date.now(),
     checkInterval: null,
     reconnectAttempts: 0,
     maxReconnectAttempts: 5
 };
+
+
 
 // Mode hors ligne avancé
 class OfflineMode {
@@ -1039,7 +1005,45 @@ function initializeUI() {
     } else {
         logger.info('Aucun utilisateur connecté, affichage de la page de connexion');
     }
+
+    
 }
+
+// Dans la fonction initializeUI() ou juste après
+async function initializeSyncManager() {
+    logger.info('Initialisation du gestionnaire de synchronisation...');
+    
+    // S'assurer que sync.js est chargé
+    if (!window.syncManager) {
+        logger.error('syncManager non disponible !');
+        return;
+    }
+    
+    try {
+        // Initialiser le sync manager
+        await window.syncManager.initializeSync();
+        logger.info('Sync manager initialisé avec succès');
+        
+        // Vérifier si on a des éléments non synchronisés
+        const unsyncedCount = await getUnsyncedCount();
+        if (unsyncedCount > 0) {
+            logger.info(`${unsyncedCount} éléments non synchronisés détectés`);
+            // Mettre à jour l'indicateur
+            updateSyncIndicator();
+        }
+        
+    } catch (error) {
+        logger.error('Erreur lors de l\'initialisation du sync manager:', error);
+    }
+}
+
+// Appeler cette fonction dans le DOMContentLoaded
+document.addEventListener('DOMContentLoaded', async () => {
+    // ... code existant ...
+    
+    // Après initializeUI()
+    await initializeSyncManager();
+});
 
 // ==================== CONFIGURATION DES BOUTONS ====================
 
@@ -1049,101 +1053,281 @@ function setupHeaderButtons() {
     // Menu toggle (mobile)
     const menuToggle = document.getElementById('menu-toggle');
     if (menuToggle) {
-        menuToggle.addEventListener('click', () => {
+        logger.debug('Configuration du bouton menu mobile');
+        // Cloner pour retirer les anciens listeners
+        const newMenuToggle = menuToggle.cloneNode(true);
+        menuToggle.parentNode.replaceChild(newMenuToggle, menuToggle);
+        
+        newMenuToggle.addEventListener('click', (e) => {
+            e.preventDefault();
             logger.debug('Toggle menu mobile');
             const sidebar = document.getElementById('sidebar');
             if (sidebar) {
                 sidebar.classList.toggle('active');
+                // Ajouter une classe au body pour gérer l'overlay
+                document.body.classList.toggle('sidebar-open');
             }
         });
+    } else {
+        logger.warn('Bouton menu-toggle non trouvé');
     }
     
     // Search button
     const searchBtn = document.getElementById('search-btn');
     if (searchBtn) {
-        searchBtn.addEventListener('click', () => {
+        logger.debug('Configuration du bouton recherche');
+        const newSearchBtn = searchBtn.cloneNode(true);
+        searchBtn.parentNode.replaceChild(newSearchBtn, searchBtn);
+        
+        newSearchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
             logger.debug('Toggle barre de recherche');
             const searchBar = document.getElementById('search-bar');
             if (searchBar) {
                 searchBar.classList.toggle('hidden');
                 if (!searchBar.classList.contains('hidden')) {
-                    document.getElementById('search-input')?.focus();
+                    const searchInput = document.getElementById('search-input');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                    }
                 }
             }
         });
+    } else {
+        logger.warn('Bouton search-btn non trouvé');
     }
     
-    // Sync button
-    const syncBtn = document.getElementById('sync-btn');
+    // Sync button - CONFIGURATION AMÉLIORÉE
+// Sync button
+const syncBtn = document.getElementById('sync-btn');
     if (syncBtn) {
         syncBtn.addEventListener('click', async () => {
-            if (!ConnectionState.isOnline) {
+            console.log('[Sync Button] Clic détecté');
+            
+            // Vérifier la connexion
+            if (!navigator.onLine) {
                 showWarning('Synchronisation impossible en mode hors ligne');
                 return;
             }
             
-            logger.info('Démarrage de la synchronisation manuelle');
-            if (window.syncManager) {
-                showLoader('Synchronisation en cours...');
+            // Vérifier que syncManager existe
+            if (!window.syncManager) {
+                console.error('[Sync Button] syncManager non disponible');
+                showError('Module de synchronisation non chargé');
+                return;
+            }
+            
+            // S'assurer que syncManager est initialisé
+            if (!window.syncManager.initialized) {
+                console.log('[Sync Button] Initialisation de syncManager...');
                 try {
-                    await window.syncManager.performFullSync();
-                    logger.info('Synchronisation terminée avec succès');
-                    showSuccess('Synchronisation terminée');
+                    await window.syncManager.initializeSync();
                 } catch (error) {
-                    logger.error('Erreur de synchronisation:', {
-                        message: error.message,
-                        stack: error.stack
-                    });
-                    showError('Erreur lors de la synchronisation');
-                } finally {
-                    hideLoader();
+                    console.error('[Sync Button] Erreur initialisation:', error);
+                    showError('Impossible d\'initialiser la synchronisation');
+                    return;
                 }
             }
-        });
-    }
-    
-    // Logout button
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async () => {
-            logger.info('Demande de déconnexion');
             
-            // Vérifier s'il y a des modifications non synchronisées
-            if (!ConnectionState.isOnline) {
-                const unsyncedCount = await getUnsyncedCount();
-                if (unsyncedCount > 0) {
-                    const confirmLogout = confirm(
+            // Lancer la synchronisation
+            console.log('[Sync Button] Démarrage de la synchronisation...');
+            showLoader('Synchronisation en cours...');
+            
+            try {
+                const result = await window.syncManager.performFullSync();
+                console.log('[Sync Button] Résultat:', result);
+                
+                if (result.success) {
+                    showSuccess('Synchronisation terminée avec succès');
+                } else {
+                    showError(`Erreur de synchronisation: ${result.error}`);
+                }
+            } catch (error) {
+                console.error('[Sync Button] Erreur:', error);
+                showError('Erreur lors de la synchronisation');
+            } finally {
+                hideLoader();
+            }
+        });
+        
+        console.log('[Sync Button] Event listener attaché');
+    } else {
+            logger.error('Bouton sync-btn non trouvé dans le DOM');
+        }
+        
+        // Settings button
+        const settingsBtn = document.getElementById('settings-btn-dashboard');
+        if (settingsBtn) {
+            logger.debug('Configuration du bouton paramètres');
+            const newSettingsBtn = settingsBtn.cloneNode(true);
+            settingsBtn.parentNode.replaceChild(newSettingsBtn, settingsBtn);
+            
+            newSettingsBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                logger.debug('Ouverture des paramètres');
+                showSettingsModal();
+            });
+        } else {
+            logger.warn('Bouton settings-btn-dashboard non trouvé');
+        }
+        
+        // Logout button
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logger.debug('Configuration du bouton déconnexion');
+            const newLogoutBtn = logoutBtn.cloneNode(true);
+            logoutBtn.parentNode.replaceChild(newLogoutBtn, logoutBtn);
+            
+            newLogoutBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                logger.info('Demande de déconnexion');
+                
+                // Vérifier s'il y a des modifications non synchronisées
+                let unsyncedCount = 0;
+                try {
+                    unsyncedCount = await getUnsyncedCount();
+                } catch (error) {
+                    logger.error('Erreur lors de la vérification des éléments non synchronisés:', error);
+                }
+                
+                if (!ConnectionState.isOnline && unsyncedCount > 0) {
+                    const confirmLogout = await showConfirmDialog(
+                        'Modifications non synchronisées',
                         `Attention ! Vous avez ${unsyncedCount} modifications non synchronisées.\n` +
                         'Si vous vous déconnectez maintenant, ces modifications seront perdues.\n\n' +
-                        'Voulez-vous vraiment vous déconnecter ?'
+                        'Voulez-vous vraiment vous déconnecter ?',
+                        'Se déconnecter quand même',
+                        'Annuler'
                     );
                     
                     if (!confirmLogout) {
                         logger.debug('Déconnexion annulée - modifications non synchronisées');
                         return;
                     }
+                } else {
+                    // Confirmation simple
+                    const confirmLogout = await showConfirmDialog(
+                        'Déconnexion',
+                        'Êtes-vous sûr de vouloir vous déconnecter ?',
+                        'Se déconnecter',
+                        'Annuler'
+                    );
+                    
+                    if (!confirmLogout) {
+                        logger.debug('Déconnexion annulée');
+                        return;
+                    }
                 }
-            }
-            
-            if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+                
                 logger.info('Déconnexion confirmée');
-                if (window.AuthManager) {
-                    await window.AuthManager.performLogout();
+                
+                // Arrêter la synchronisation automatique
+                if (window.syncManager && window.syncManager.stopAutoSync) {
+                    window.syncManager.stopAutoSync();
                 }
-            } else {
-                logger.debug('Déconnexion annulée');
-            }
-        });
+                
+                // Effectuer la déconnexion
+                if (window.AuthManager && window.AuthManager.performLogout) {
+                    showLoader('Déconnexion en cours...');
+                    try {
+                        await window.AuthManager.performLogout();
+                        logger.info('Déconnexion réussie');
+                    } catch (error) {
+                        logger.error('Erreur lors de la déconnexion:', error);
+                        showError('Erreur lors de la déconnexion');
+                    } finally {
+                        hideLoader();
+                    }
+                } else {
+                    logger.error('AuthManager non disponible pour la déconnexion');
+                    showError('Impossible de se déconnecter');
+                }
+            });
+        } else {
+            logger.warn('Bouton logout-btn non trouvé');
+        }
+        
+        logger.info('Configuration des boutons du header terminée');
     }
-    
-    // Settings button
-    const settingsBtn = document.getElementById('settings-btn-dashboard');
-    if (settingsBtn) {
-        settingsBtn.addEventListener('click', () => {
-            logger.debug('Ouverture des paramètres');
-            showSettingsModal();
-        });
+
+    // Fonction helper pour afficher une boîte de dialogue de confirmation
+    async function showConfirmDialog(title, message, confirmText = 'Confirmer', cancelText = 'Annuler') {
+        // Si l'API Electron est disponible
+        if (window.electronAPI && window.electronAPI.dialog) {
+            const result = await window.electronAPI.dialog.showMessageBox({
+                type: 'question',
+                title: title,
+                message: message,
+                buttons: [cancelText, confirmText],
+                defaultId: 0,
+                cancelId: 0
+            });
+            return result.response === 1;
+        } else {
+            // Fallback avec confirm natif
+            return confirm(`${title}\n\n${message}`);
+        }
     }
+
+// Ajouter les styles pour l'animation de rotation
+const spinningStyles = `
+<style>
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.spinning {
+    animation: spin 1s linear infinite;
+}
+
+.sidebar-open .main-content {
+    overflow: hidden;
+}
+
+.sidebar-open::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 90;
+}
+
+#sidebar.active {
+    transform: translateX(0);
+}
+
+/* Badge pour le bouton sync */
+.has-unsynced::after {
+    content: '';
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 8px;
+    height: 8px;
+    background: var(--danger-color, #e74c3c);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.7; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+}
+</style>
+`;
+
+// Injecter les styles si pas déjà fait
+if (!document.getElementById('header-buttons-styles')) {
+    const styleElement = document.createElement('style');
+    styleElement.id = 'header-buttons-styles';
+    styleElement.innerHTML = spinningStyles.replace('<style>', '').replace('</style>', '');
+    document.head.appendChild(styleElement);
 }
 
 // ==================== MODALS ====================
@@ -2338,6 +2522,115 @@ window.addEventListener('beforeunload', () => {
        pageObserver.disconnect();
    }
 });
+
+// Fonction de debug pour le bouton sync
+window.debugSync = async function() {
+    console.log('=== DEBUG SYNC ===');
+    console.log('1. Bouton existe:', !!document.getElementById('sync-btn'));
+    console.log('2. syncManager existe:', !!window.syncManager);
+    console.log('3. syncManager initialisé:', window.syncManager?.initialized);
+    console.log('4. En ligne:', navigator.onLine);
+    console.log('5. Fonctions UI disponibles:', {
+        showLoader: typeof showLoader,
+        hideLoader: typeof hideLoader,
+        showSuccess: typeof showSuccess,
+        showError: typeof showError,
+        showWarning: typeof showWarning
+    });
+    
+    // Test direct
+    if (window.syncManager) {
+        console.log('6. Test de synchronisation...');
+        try {
+            const result = await window.syncManager.performFullSync();
+            console.log('Résultat:', result);
+        } catch (error) {
+            console.error('Erreur:', error);
+        }
+    }
+};
+// Ajouter dans app.js
+// Dans app.js
+async function updateSyncIndicator() {
+    try {
+        const result = await window.electronAPI.db.getUnsyncedItems();
+        const unsyncedCount = result.success && result.result ? result.result.length : 0;
+        
+        const syncBtn = document.getElementById('sync-btn');
+        if (!syncBtn) return;
+        
+        // Retirer l'ancien badge
+        const oldBadge = syncBtn.querySelector('.sync-badge');
+        if (oldBadge) oldBadge.remove();
+        
+        if (unsyncedCount > 0) {
+            // Ajouter un badge
+            const badge = document.createElement('span');
+            badge.className = 'sync-badge';
+            badge.textContent = unsyncedCount;
+            badge.style.cssText = `
+                position: absolute;
+                top: -5px;
+                right: -5px;
+                background: #e74c3c;
+                color: white;
+                border-radius: 10px;
+                padding: 2px 6px;
+                font-size: 11px;
+                font-weight: bold;
+            `;
+            syncBtn.style.position = 'relative';
+            syncBtn.appendChild(badge);
+        }
+    } catch (error) {
+        logger.error('Erreur updateSyncIndicator:', error);
+    }
+}
+// CSS à ajouter
+const syncIndicatorStyles = `
+<style>
+.sync-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--danger-color, #e74c3c);
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    animation: badge-pulse 2s infinite;
+}
+
+.has-pending-sync {
+    position: relative;
+}
+
+.has-pending-sync::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: var(--primary-color);
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    animation: sync-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+@keyframes sync-pulse {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.3; }
+    100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+</style>
+`;
 
 // Export des fonctions globales
 window.showContentPage = showContentPage;

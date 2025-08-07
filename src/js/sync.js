@@ -536,13 +536,19 @@ window.dismissUpdateNotification = function() {
 
 // Exports pour utilisation globale
 window.syncManager = {
+    initialized: false,
     performFullSync,
     startAutoSync,
     stopAutoSync,
     syncItem,
     queueSyncItem,
     getSyncStatus,
-    initializeSync,
+    initializeSync: async function() {
+        if (this.initialized) return { success: true };
+        const result = await initializeSync();
+        this.initialized = result.success;
+        return result;
+    },
     syncDownloadedMedia
 };
 
