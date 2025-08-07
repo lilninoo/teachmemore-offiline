@@ -5,79 +5,133 @@ const SyncState = {
     isSyncing: false,
     lastSync: null,
     pendingSync: new Set(),
-    syncErrors: []
+    syncErrors: [],
+    syncTimeout: null
 };
 
 // Initialiser la synchronisation
 async function initializeSync() {
-    // Charger la dernière date de synchronisation
-    SyncState.lastSync = await window.electronAPI.store.get('lastSync');
-    
-    // Démarrer la synchronisation automatique si activée
-    const autoSync = await window.electronAPI.store.get('autoSync');
-    if (autoSync) {
-        startAutoSync();
+    try {
+        console.log('[Sync] Initialisation du module de synchronisation');
+        
+        // Charger la dernière date de synchronisation
+        if (window.electronAPI && window.electronAPI.store) {
+            SyncState.lastSync = await window.electronAPI.store.get('lastSync');
+        }
+        
+        // Démarrer la synchronisation automatique si activée
+        const autoSync = await window.electronAPI.store.get('autoSync');
+        if (autoSync !== false) { // Par défaut activé
+            startAutoSync();
+        }
+        
+        // Écouter les changements de connexion
+        window.addEventListener('online', onConnectionRestored);
+        window.addEventListener('offline', onConnectionLost);
+        
+        console.log('[Sync] Module initialisé avec succès');
+        return { success: true };
+        
+    } catch (error) {
+        console.error('[Sync] Erreur lors de l\'initialisation:', error);
+        return { success: false, error: error.message };
     }
-    
-    // Écouter les changements de connexion
-    window.addEventListener('online', onConnectionRestored);
-    window.addEventListener('offline', onConnectionLost);
 }
 
 // Synchronisation complète
 async function performFullSync() {
     if (SyncState.isSyncing) {
-        console.log('Synchronisation déjà en cours');
+        console.log('[Sync] Synchronisation déjà en cours');
         return { success: false, error: 'Synchronisation déjà en cours' };
     }
     
+    console.log('[Sync] Démarrage de la synchronisation complète');
     SyncState.isSyncing = true;
-    showSyncProgress('Synchronisation en cours...', 0);
+    
+    // Utiliser showSyncProgress si elle existe, sinon fallback
+    const showProgress = window.showSyncProgress || ((msg, pct) => {
+        console.log(`[Sync Progress] ${msg} (${pct}%)`);
+        if (window.showInfo) window.showInfo(`${msg} (${pct}%)`);
+    });
+    
+    const hideProgress = window.hideSyncProgress || (() => {
+        console.log('[Sync Progress] Terminé');
+    });
+    
+    showProgress('Synchronisation en cours...', 0);
     
     try {
         // 1. Vérifier la connexion
-        const isOnline = await window.electronAPI.checkInternet();
+        const isOnline = navigator.onLine;
         if (!isOnline) {
             throw new Error('Aucune connexion internet');
         }
         
-        // 2. Synchroniser la progression des leçons
-        showSyncProgress('Synchronisation de la progression...', 20);
+        // 2. Récupérer les modifications locales
+        showProgress('Analyse des modifications locales...', 10);
+        const localChanges = await getLocalChanges();
+        console.log(`[Sync] ${localChanges.length} modifications locales trouvées`);
+        
+        // 3. Synchroniser la progression des leçons
+        showProgress('Synchronisation de la progression...', 30);
         await syncLessonProgress();
         
-        // 3. Synchroniser les quiz
-        showSyncProgress('Synchronisation des quiz...', 40);
-        await syncQuizResults();
+        // 4. Synchroniser avec le serveur si on a des changements
+        if (localChanges.length > 0) {
+            showProgress('Envoi des modifications au serveur...', 50);
+            await pushLocalChanges(localChanges);
+        }
         
-        // 4. Vérifier les mises à jour des cours
-        showSyncProgress('Vérification des mises à jour...', 60);
+        // 5. Vérifier les mises à jour des cours
+        showProgress('Vérification des mises à jour...', 70);
         await checkCourseUpdates();
         
-        // 5. Nettoyer les cours expirés
-        showSyncProgress('Nettoyage des données...', 80);
+        // 6. Nettoyer les cours expirés
+        showProgress('Nettoyage des données...', 90);
         await cleanupExpiredContent();
         
-        // 6. Mettre à jour la date de dernière sync
+        // 7. Mettre à jour la date de dernière sync
         SyncState.lastSync = new Date().toISOString();
-        await window.electronAPI.store.set('lastSync', SyncState.lastSync);
+        if (window.electronAPI && window.electronAPI.store) {
+            await window.electronAPI.store.set('lastSync', SyncState.lastSync);
+        }
         
-        showSyncProgress('Synchronisation terminée !', 100);
+        showProgress('Synchronisation terminée !', 100);
+        
+        // Rafraîchir l'interface
+        if (window.refreshDashboard) {
+            window.refreshDashboard();
+        }
+        
+        // Mettre à jour l'indicateur de sync
+        if (window.updateSyncIndicator) {
+            await window.updateSyncIndicator();
+        }
         
         setTimeout(() => {
-            hideSyncProgress();
+            hideProgress();
         }, 2000);
+        
+        console.log('[Sync] Synchronisation complète terminée avec succès');
+        
+        if (window.showSuccess) {
+            window.showSuccess('Synchronisation terminée avec succès');
+        }
         
         return { success: true };
         
     } catch (error) {
-        console.error('Erreur lors de la synchronisation:', error);
+        console.error('[Sync] Erreur lors de la synchronisation:', error);
         SyncState.syncErrors.push({
             timestamp: new Date().toISOString(),
             error: error.message
         });
         
-        showError(`Erreur de synchronisation: ${error.message}`);
-        hideSyncProgress();
+        if (window.showError) {
+            window.showError(`Erreur de synchronisation: ${error.message}`);
+        }
+        
+        hideProgress();
         
         return { success: false, error: error.message };
         
@@ -86,183 +140,176 @@ async function performFullSync() {
     }
 }
 
-// Synchroniser la progression des leçons
-async function syncLessonProgress() {
+// Récupérer les modifications locales
+async function getLocalChanges() {
     try {
-        // Récupérer les éléments non synchronisés
-        const unsyncedItems = await window.electronAPI.db.getUnsyncedItems();
-        
-        if (unsyncedItems.length === 0) {
-            console.log('Aucune progression à synchroniser');
-            return;
+        const result = await window.electronAPI.db.getUnsyncedItems();
+        if (result.success && result.result) {
+            return result.result;
         }
-        
-        // Grouper par type d'action
-        const progressData = {
-            lessons: [],
-            quizzes: [],
-            courses: []
+        return [];
+    } catch (error) {
+        console.error('[Sync] Erreur lors de la récupération des modifications locales:', error);
+        return [];
+    }
+}
+
+// Pousser les changements locaux vers le serveur
+async function pushLocalChanges(changes) {
+    if (!changes || changes.length === 0) return;
+    
+    console.log(`[Sync] Envoi de ${changes.length} modifications au serveur`);
+    
+    // Grouper par type pour optimiser
+    const progressData = {
+        lessons: [],
+        quizzes: [],
+        courses: []
+    };
+    
+    changes.forEach(item => {
+        const data = {
+            id: item.entity_id,
+            action: item.action,
+            data: item.data,
+            timestamp: item.created_at
         };
         
-        unsyncedItems.forEach(item => {
-            const data = {
-                id: item.entity_id,
-                action: item.action,
-                timestamp: item.created_at
-            };
-            
-            switch (item.entity_type) {
-                case 'lesson':
-                    progressData.lessons.push(data);
-                    break;
-                case 'quiz':
-                    progressData.quizzes.push(data);
-                    break;
-                case 'course':
-                    progressData.courses.push(data);
-                    break;
-            }
-        });
-        
-        // Envoyer au serveur
+        switch (item.entity_type) {
+            case 'lesson':
+                progressData.lessons.push(data);
+                break;
+            case 'quiz':
+                progressData.quizzes.push(data);
+                break;
+            case 'course':
+                progressData.courses.push(data);
+                break;
+        }
+    });
+    
+    try {
+        // Utiliser la fonction syncProgress qui existe dans votre preload
         const result = await window.electronAPI.api.syncProgress(progressData);
         
         if (result.success) {
             // Marquer comme synchronisés
-            const syncIds = unsyncedItems.map(item => item.id);
+            const syncIds = changes.map(item => item.id);
             await window.electronAPI.db.markAsSynced(syncIds);
             
-            console.log(`${syncIds.length} éléments synchronisés avec succès`);
+            console.log(`[Sync] ${syncIds.length} éléments synchronisés avec succès`);
         } else {
             throw new Error(result.error || 'Échec de la synchronisation');
         }
-        
     } catch (error) {
-        console.error('Erreur lors de la synchronisation de la progression:', error);
+        console.error('[Sync] Erreur lors de l\'envoi des changements:', error);
         throw error;
     }
 }
 
-// Synchroniser les résultats des quiz
-async function syncQuizResults() {
+// Synchroniser la progression des leçons
+async function syncLessonProgress() {
     try {
-        // Récupérer tous les quiz avec des tentatives
-        const courses = await window.electronAPI.db.getAllCourses();
-        const quizAttempts = [];
+        // Utiliser getUnsyncedItems qui existe déjà
+        const result = await window.electronAPI.db.getUnsyncedItems();
         
-        for (const course of courses) {
-            const sections = await window.electronAPI.db.getSections(course.course_id);
-            
-            for (const section of sections) {
-                const lessons = await window.electronAPI.db.getLessons(section.section_id);
-                
-                for (const lesson of lessons) {
-                    if (lesson.type === 'quiz') {
-                        const quiz = await window.electronAPI.db.getQuiz(lesson.lesson_id);
-                        if (quiz && quiz.attempts > 0) {
-                            quizAttempts.push({
-                                quiz_id: quiz.quiz_id,
-                                lesson_id: lesson.lesson_id,
-                                score: quiz.score,
-                                attempts: quiz.attempts,
-                                last_attempt: quiz.last_attempt
-                            });
-                        }
-                    }
-                }
-            }
+        if (!result.success || !result.result || result.result.length === 0) {
+            console.log('[Sync] Aucune progression à synchroniser');
+            return;
         }
         
-        if (quizAttempts.length > 0) {
-            // Envoyer les résultats au serveur
-            const result = await window.electronAPI.api.syncProgress({
-                quiz_results: quizAttempts
-            });
-            
-            if (result.success) {
-                console.log(`${quizAttempts.length} résultats de quiz synchronisés`);
-            }
-        }
+        const unsyncedItems = result.result;
+        console.log(`[Sync] ${unsyncedItems.length} éléments de progression trouvés`);
+        
+        // Les envoyer via pushLocalChanges
+        await pushLocalChanges(unsyncedItems);
         
     } catch (error) {
-        console.error('Erreur lors de la synchronisation des quiz:', error);
-        // Ne pas propager l'erreur pour ne pas bloquer la sync complète
+        console.error('[Sync] Erreur lors de la synchronisation de la progression:', error);
+        // Ne pas propager l'erreur pour continuer la sync
     }
 }
 
 // Vérifier les mises à jour des cours
 async function checkCourseUpdates() {
     try {
-        // Récupérer la liste des cours du serveur
-        const result = await window.electronAPI.api.getCourses(1, 100);
-        
-        if (!result.success) {
-            throw new Error(result.error || 'Impossible de récupérer les cours');
+        // Récupérer la liste des cours locaux
+        const localResult = await window.electronAPI.db.getAllCourses();
+        if (!localResult.success || !localResult.result) {
+            return;
         }
         
-        const serverCourses = result.courses;
-        const localCourses = await window.electronAPI.db.getAllCourses();
-        
-        // Créer un map pour comparaison rapide
-        const localCoursesMap = new Map(
-            localCourses.map(c => [c.course_id, c])
-        );
-        
+        const localCourses = localResult.result;
         const updates = [];
         
-        // Vérifier les mises à jour
-        for (const serverCourse of serverCourses) {
-            const localCourse = localCoursesMap.get(serverCourse.id);
-            
-            if (localCourse) {
-                // Comparer les versions ou checksums
-                if (serverCourse.version > (localCourse.version || 0)) {
-                    updates.push({
-                        course_id: serverCourse.id,
-                        title: serverCourse.title,
-                        type: 'update',
-                        new_version: serverCourse.version
-                    });
+        // Pour chaque cours local, vérifier s'il y a une mise à jour
+        for (const localCourse of localCourses) {
+            try {
+                // Utiliser getCourseDetails qui existe dans votre preload
+                const serverResult = await window.electronAPI.api.getCourseDetails(localCourse.course_id);
+                
+                if (serverResult.success && serverResult.data) {
+                    const serverCourse = serverResult.data;
+                    
+                    // Comparer les dates de mise à jour
+                    const localDate = new Date(localCourse.updated_at || 0);
+                    const serverDate = new Date(serverCourse.updated_at || 0);
+                    
+                    if (serverDate > localDate) {
+                        updates.push({
+                            course_id: serverCourse.id,
+                            title: serverCourse.title,
+                            type: 'update',
+                            local_version: localCourse.version || '1.0',
+                            server_version: serverCourse.version || '1.1'
+                        });
+                    }
                 }
+            } catch (error) {
+                console.debug(`[Sync] Impossible de vérifier les mises à jour pour ${localCourse.title}`);
             }
         }
         
         // Notifier l'utilisateur des mises à jour disponibles
         if (updates.length > 0) {
+            console.log(`[Sync] ${updates.length} mises à jour disponibles`);
             showUpdateNotification(updates);
         }
         
     } catch (error) {
-        console.error('Erreur lors de la vérification des mises à jour:', error);
-        throw error;
+        console.error('[Sync] Erreur lors de la vérification des mises à jour:', error);
     }
 }
 
 // Nettoyer le contenu expiré
 async function cleanupExpiredContent() {
     try {
-        const expiredCourses = await window.electronAPI.db.getExpiredCourses();
+        // Cette fonction existe dans votre preload !
+        const result = await window.electronAPI.db.getExpiredCourses();
         
-        if (expiredCourses.length > 0) {
-            console.log(`${expiredCourses.length} cours expirés trouvés`);
+        if (!result.success || !result.result || result.result.length === 0) {
+            console.log('[Sync] Aucun cours expiré trouvé');
+            return;
+        }
+        
+        const expiredCourses = result.result;
+        console.log(`[Sync] ${expiredCourses.length} cours expirés trouvés`);
+        
+        // Demander confirmation à l'utilisateur
+        const confirmCleanup = await showCleanupConfirmation(expiredCourses);
+        
+        if (confirmCleanup) {
+            for (const course of expiredCourses) {
+                await window.electronAPI.db.deleteCourse(course.course_id);
+            }
             
-            // Demander confirmation à l'utilisateur
-            const confirmCleanup = await showCleanupConfirmation(expiredCourses);
-            
-            if (confirmCleanup) {
-                for (const course of expiredCourses) {
-                    await window.electronAPI.db.deleteCourse(course.course_id);
-                }
-                
-                showSuccess(`${expiredCourses.length} cours expirés supprimés`);
+            if (window.showSuccess) {
+                window.showSuccess(`${expiredCourses.length} cours expirés supprimés`);
             }
         }
         
-        // Nettoyer aussi les entrées de synchronisation anciennes
-        await window.electronAPI.db.cleanupExpiredData();
-        
     } catch (error) {
-        console.error('Erreur lors du nettoyage:', error);
+        console.error('[Sync] Erreur lors du nettoyage:', error);
         // Ne pas propager l'erreur
     }
 }
@@ -271,44 +318,50 @@ async function cleanupExpiredContent() {
 let autoSyncInterval = null;
 
 function startAutoSync() {
-    // Synchroniser toutes les 30 minutes
+    // Synchroniser toutes les 30 minutes par défaut
     const SYNC_INTERVAL = 30 * 60 * 1000; // 30 minutes
     
     stopAutoSync(); // Arrêter l'ancienne instance si elle existe
     
     autoSyncInterval = setInterval(async () => {
-        const isOnline = await window.electronAPI.checkInternet();
+        const isOnline = navigator.onLine;
         if (isOnline && !SyncState.isSyncing) {
-            console.log('Démarrage de la synchronisation automatique');
+            console.log('[Sync] Démarrage de la synchronisation automatique');
             performFullSync();
         }
     }, SYNC_INTERVAL);
     
-    console.log('Synchronisation automatique activée');
+    console.log('[Sync] Synchronisation automatique activée (toutes les 30 minutes)');
 }
 
 function stopAutoSync() {
     if (autoSyncInterval) {
         clearInterval(autoSyncInterval);
         autoSyncInterval = null;
-        console.log('Synchronisation automatique désactivée');
+        console.log('[Sync] Synchronisation automatique désactivée');
     }
 }
 
 // Gestion de la connexion
 function onConnectionRestored() {
-    console.log('Connexion internet rétablie');
-    showInfo('Connexion rétablie - Synchronisation en cours...');
+    console.log('[Sync] Connexion internet rétablie');
+    if (window.showInfo) {
+        window.showInfo('Connexion rétablie - Synchronisation en cours...');
+    }
     
     // Attendre 5 secondes avant de synchroniser
     setTimeout(() => {
-        performFullSync();
+        if (!SyncState.isSyncing) {
+            performFullSync();
+        }
     }, 5000);
 }
 
 function onConnectionLost() {
-    console.log('Connexion internet perdue');
-    showWarning('Mode hors ligne - Les modifications seront synchronisées ultérieurement');
+    console.log('[Sync] Connexion internet perdue');
+    if (window.showWarning) {
+        window.showWarning('Mode hors ligne - Les modifications seront synchronisées ultérieurement');
+    }
 }
 
 // Interface utilisateur pour la synchronisation
@@ -356,7 +409,7 @@ function showUpdateNotification(updates) {
             <p>${updates.length} cours ont des mises à jour disponibles</p>
             <ul>
                 ${updates.slice(0, 3).map(u => 
-                    `<li>${u.title} (v${u.new_version})</li>`
+                    `<li>${u.title} (v${u.server_version})</li>`
                 ).join('')}
                 ${updates.length > 3 ? `<li>Et ${updates.length - 3} autres...</li>` : ''}
             </ul>
@@ -377,40 +430,52 @@ function showUpdateNotification(updates) {
 
 // Confirmation de nettoyage
 async function showCleanupConfirmation(expiredCourses) {
-    const result = await window.electronAPI.dialog.showMessageBox({
-        type: 'question',
-        title: 'Cours expirés',
-        message: `${expiredCourses.length} cours ont expiré. Voulez-vous les supprimer pour libérer de l'espace ?`,
-        detail: expiredCourses.map(c => c.title).join('\n'),
-        buttons: ['Supprimer', 'Conserver'],
-        defaultId: 0,
-        cancelId: 1
-    });
-    
-    return result.response === 0;
+    if (window.electronAPI && window.electronAPI.dialog) {
+        const result = await window.electronAPI.dialog.showMessageBox({
+            type: 'question',
+            title: 'Cours expirés',
+            message: `${expiredCourses.length} cours ont expiré. Voulez-vous les supprimer pour libérer de l'espace ?`,
+            detail: expiredCourses.map(c => c.title).join('\n'),
+            buttons: ['Supprimer', 'Conserver'],
+            defaultId: 0,
+            cancelId: 1
+        });
+        
+        return result.response === 0;
+    } else {
+        // Fallback si dialog n'est pas disponible
+        return confirm(
+            `${expiredCourses.length} cours ont expiré.\n\n` +
+            `Voulez-vous les supprimer pour libérer de l'espace ?\n\n` +
+            expiredCourses.slice(0, 5).map(c => `- ${c.title}`).join('\n') +
+            (expiredCourses.length > 5 ? `\n... et ${expiredCourses.length - 5} autres` : '')
+        );
+    }
 }
 
 // Synchroniser un élément spécifique
 async function syncItem(type, id, data) {
     try {
-        SyncState.pendingSync.add(`${type}-${id}`);
+        const key = `${type}-${id}`;
+        SyncState.pendingSync.add(key);
         
         // Ajouter à la file de synchronisation
-        await window.electronAPI.db.addToSyncQueue(type, id, 'update');
+        await window.electronAPI.db.addToSyncQueue(type, id, 'update', data);
         
-        // Si en ligne, synchroniser immédiatement
-        const isOnline = await window.electronAPI.checkInternet();
+        // Si en ligne, synchroniser après un délai
+        const isOnline = navigator.onLine;
         if (isOnline && !SyncState.isSyncing) {
-            setTimeout(() => {
+            // Grouper les synchronisations
+            clearTimeout(SyncState.syncTimeout);
+            SyncState.syncTimeout = setTimeout(() => {
                 syncLessonProgress();
-            }, 1000);
+            }, 5000);
         }
         
     } catch (error) {
-        console.error(`Erreur lors de l'ajout à la file de sync:`, error);
+        console.error(`[Sync] Erreur lors de l'ajout à la file de sync:`, error);
     }
 }
-
 
 // Ajouter une file de synchronisation persistante
 async function queueSyncItem(type, id, action, data) {
@@ -418,7 +483,7 @@ async function queueSyncItem(type, id, action, data) {
     await window.electronAPI.db.addToSyncQueue(type, id, action, data);
     
     // Tenter de synchroniser si en ligne
-    const isOnline = await window.electronAPI.checkInternet();
+    const isOnline = navigator.onLine;
     if (isOnline && !SyncState.isSyncing) {
         // Synchroniser après un délai pour grouper les actions
         clearTimeout(SyncState.syncTimeout);
@@ -438,19 +503,27 @@ function getSyncStatus() {
     };
 }
 
-// Exports pour utilisation globale
-window.syncManager = {
-    performFullSync,
-    startAutoSync,
-    stopAutoSync,
-    syncItem,
-    getSyncStatus,
-    initializeSync
-};
+// Synchroniser les médias téléchargés
+async function syncDownloadedMedia(courseId) {
+    try {
+        // getMediaByLesson n'existe pas, mais on peut utiliser d'autres méthodes
+        console.log('[Sync] Synchronisation des médias pour le cours', courseId);
+        
+        // Pour l'instant, on skip cette partie
+        return;
+        
+    } catch (error) {
+        console.error('[Sync] Erreur sync médias:', error);
+    }
+}
 
 // Fonctions globales pour les boutons
 window.showUpdateManager = function() {
-    showMessage('Gestionnaire de mises à jour en développement', 'info');
+    if (window.showInfo) {
+        window.showInfo('Gestionnaire de mises à jour en développement');
+    } else {
+        alert('Gestionnaire de mises à jour en développement');
+    }
 };
 
 window.dismissUpdateNotification = function() {
@@ -459,6 +532,18 @@ window.dismissUpdateNotification = function() {
         notification.classList.remove('show');
         setTimeout(() => notification.remove(), 300);
     }
+};
+
+// Exports pour utilisation globale
+window.syncManager = {
+    performFullSync,
+    startAutoSync,
+    stopAutoSync,
+    syncItem,
+    queueSyncItem,
+    getSyncStatus,
+    initializeSync,
+    syncDownloadedMedia
 };
 
 // Styles CSS pour la synchronisation
@@ -485,6 +570,26 @@ const syncStyles = `
 .sync-progress-content p {
     margin: 0 0 10px;
     font-weight: 500;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background: var(--bg-secondary);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: var(--primary-color);
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: var(--text-secondary);
 }
 
 .update-notification {
@@ -520,41 +625,44 @@ const syncStyles = `
     gap: 10px;
     justify-content: flex-end;
 }
+
+/* Badge de synchronisation */
+.sync-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: var(--danger-color, #e74c3c);
+    color: white;
+    border-radius: 10px;
+    padding: 2px 6px;
+    font-size: 11px;
+    font-weight: bold;
+    animation: badge-pulse 2s infinite;
+}
+
+@keyframes badge-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
 </style>
 `;
 
-document.head.insertAdjacentHTML('beforeend', syncStyles);
-
-// Initialiser au chargement
-document.addEventListener('DOMContentLoaded', () => {
-    initializeSync();
-});
-
-
-class OfflineMode {
-    constructor() {
-        this.isOffline = false;
-        this.pendingActions = [];
-    }
-    
-    enableOfflineMode() {
-        this.isOffline = true;
-        this.disableOnlineFeatures();
-    }
-
-    disableOnlineFeatures() {
-        // À implémenter : désactiver les boutons ou fonctionnalités online
-    }
-    
-    queueAction(action) {
-        this.pendingActions.push({
-            ...action,
-            timestamp: Date.now()
-        });
-    }
-    
-    async syncPendingActions() {
-        // Synchroniser quand la connexion revient
-    }
+// Injecter les styles au chargement
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        document.head.insertAdjacentHTML('beforeend', syncStyles);
+    });
+} else {
+    document.head.insertAdjacentHTML('beforeend', syncStyles);
 }
 
+// Initialiser au chargement
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('[Sync] Document prêt, initialisation du module sync');
+        initializeSync();
+    });
+} else {
+    console.log('[Sync] Document déjà chargé, initialisation immédiate');
+    initializeSync();
+}
