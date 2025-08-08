@@ -1906,269 +1906,257 @@ loadAttachments(attachments) {
     },
     
     // Charger une vidéo
-// Charger une vidéo
-async loadVideo() {
-    console.log('[Player] ==> loadVideo() appelé');
-    console.log('[Player] État actuel:', {
-        hasVideoElement: !!PlayerState.videoElement,
-        hasCurrentLesson: !!PlayerState.currentLesson,
-        lessonId: PlayerState.currentLesson?.lesson_id,
-        lessonType: PlayerState.currentLesson?.type
-    });
-    
-    const video = PlayerState.videoElement;
-    const documentViewer = document.getElementById('document-viewer');
-    
-    if (!video) {
-        console.error('[Player] Élément vidéo non trouvé');
-        return;
-    }
-
-     // IMPORTANT : S'assurer que la vidéo est visible
-    video.style.display = 'block';
-    video.style.visibility = 'visible';
-    video.style.opacity = '1';
-    video.classList.remove('hidden');
-
-
-        // S'assurer que le conteneur est aussi visible
-    const videoWrapper = document.getElementById('video-wrapper');
-    if (videoWrapper) {
-        videoWrapper.style.display = 'block';
-        videoWrapper.classList.remove('hidden');
-    }
-    
-    if (!PlayerState.currentLesson) {
-        console.error('[Player] Aucune leçon sélectionnée');
-        return;
-    }
-    
-    // Debug: Afficher toutes les propriétés de la leçon
-    console.log('[Player] Propriétés de la leçon:', {
-        file_path: PlayerState.currentLesson.file_path,
-        video_url: PlayerState.currentLesson.video_url,
-        media_url: PlayerState.currentLesson.media_url,
-        media: PlayerState.currentLesson.media,
-        attachments: PlayerState.currentLesson.attachments,
-        type: PlayerState.currentLesson.type,
-        media_type: PlayerState.currentLesson.media_type
-    });
-    
-    // Afficher la vidéo, cacher le document
-    video.style.display = 'block';
-    video.classList.remove('hidden');
-    documentViewer?.classList.add('hidden');
-    
-    // Réafficher les contrôles vidéo
-    const videoControls = document.getElementById('video-controls');
-    if (videoControls) {
-        videoControls.style.display = 'block';
-    }
-    
-    // Réinitialiser
-    this.showLoading();
-    video.pause();
-    
-    // Déterminer le chemin de la vidéo
-    let videoPath = null;
-    
-    // 1. Essayer file_path en premier
-    if (PlayerState.currentLesson.file_path) {
-        videoPath = PlayerState.currentLesson.file_path;
-        console.log('[Player] Chemin trouvé dans file_path:', videoPath);
-    }
-    // 2. Essayer video_url
-    else if (PlayerState.currentLesson.video_url) {
-        videoPath = PlayerState.currentLesson.video_url;
-        console.log('[Player] Chemin trouvé dans video_url:', videoPath);
-    }
-    // 3. Essayer media_url
-    else if (PlayerState.currentLesson.media_url) {
-        videoPath = PlayerState.currentLesson.media_url;
-        console.log('[Player] Chemin trouvé dans media_url:', videoPath);
-    }
-    // 4. Essayer de récupérer depuis les médias associés
-    else if (PlayerState.currentLesson.media && Array.isArray(PlayerState.currentLesson.media) && PlayerState.currentLesson.media.length > 0) {
-        console.log('[Player] Recherche dans les médias associés:', PlayerState.currentLesson.media.length, 'média(s)');
+    async loadVideo() {
+        console.log('[Player] ==> loadVideo() appelé');
+        console.log('[Player] État actuel:', {
+            hasVideoElement: !!PlayerState.videoElement,
+            hasCurrentLesson: !!PlayerState.currentLesson,
+            lessonId: PlayerState.currentLesson?.lesson_id,
+            lessonType: PlayerState.currentLesson?.type
+        });
         
-        const videoMedia = PlayerState.currentLesson.media.find(m => 
-            m.type === 'video' || m.mime_type?.startsWith('video/')
-        );
-        
-        if (videoMedia) {
-            videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
-            console.log('[Player] Média vidéo trouvé:', {
-                id: videoMedia.id,
-                type: videoMedia.type,
-                mime_type: videoMedia.mime_type,
-                path: videoMedia.path,
-                file_path: videoMedia.file_path,
-                url: videoMedia.url
-            });
+        const video = PlayerState.videoElement;
+        if (!video) {
+            console.error('[Player] Élément vidéo non trouvé');
+            this.showError('Élément vidéo non trouvé');
+            return;
         }
-    }
-    
-    if (!videoPath) {
-        console.error('[Player] ERREUR: Aucun chemin vidéo trouvé pour la leçon');
-        console.error('[Player] Données complètes de la leçon:', PlayerState.currentLesson);
-        this.hideLoading();
-        this.displayNoMediaMessage();
-        return;
-    }
-    
-    console.log('[Player] Chemin vidéo final:', videoPath);
-    console.log('[Player] Type de chemin:', {
-        isAbsolutePath: videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/),
-        isHttpUrl: videoPath.startsWith('http://') || videoPath.startsWith('https://'),
-        isFileUrl: videoPath.startsWith('file://'),
-        extension: videoPath.split('.').pop()
-    });
-    
-    // Vérifier la disponibilité du SecureMediaPlayer
-    console.log('[Player] Vérification du SecureMediaPlayer:', {
-        hasElectronAPI: !!window.electronAPI,
-        hasMedia: !!window.electronAPI?.media,
-        hasCreateStreamUrl: !!window.electronAPI?.media?.createStreamUrl
-    });
-    
-    try {
-        // Si nous avons un SecureMediaPlayer, l'utiliser pour déchiffrer
-        if (window.electronAPI && window.electronAPI.media && window.electronAPI.media.createStreamUrl) {
-            console.log('[Player] Utilisation du SecureMediaPlayer pour le déchiffrement');
+
+        if (!PlayerState.currentLesson) {
+            console.error('[Player] Aucune leçon sélectionnée');
+            this.showError('Aucune leçon sélectionnée');
+            return;
+        }
+
+        // S'assurer que la vidéo est visible
+        video.style.display = 'block';
+        video.style.visibility = 'visible';
+        video.style.opacity = '1';
+        video.classList.remove('hidden');
+
+        const videoWrapper = document.getElementById('video-wrapper');
+        if (videoWrapper) {
+            videoWrapper.style.display = 'block';
+            videoWrapper.classList.remove('hidden');
+        }
+        
+        // Afficher le loader
+        this.showLoading();
+        
+        // Réinitialiser la vidéo
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        
+        try {
+            // Déterminer le chemin de la vidéo
+            let videoPath = null;
+            let isEncrypted = false;
             
-            // Créer une URL de streaming sécurisée
-            console.log('[Player] Appel de createStreamUrl avec:', {
+            // 1. Vérifier file_path en premier
+            if (PlayerState.currentLesson.file_path) {
+                videoPath = PlayerState.currentLesson.file_path;
+                console.log('[Player] Chemin trouvé dans file_path:', videoPath);
+            }
+            // 2. Essayer video_url
+            else if (PlayerState.currentLesson.video_url) {
+                videoPath = PlayerState.currentLesson.video_url;
+                console.log('[Player] Chemin trouvé dans video_url:', videoPath);
+            }
+            // 3. Essayer media_url
+            else if (PlayerState.currentLesson.media_url) {
+                videoPath = PlayerState.currentLesson.media_url;
+                console.log('[Player] Chemin trouvé dans media_url:', videoPath);
+            }
+            // 4. Essayer de récupérer depuis les médias associés
+            else if (PlayerState.currentLesson.media && Array.isArray(PlayerState.currentLesson.media)) {
+                const videoMedia = PlayerState.currentLesson.media.find(m => 
+                    m.type === 'video' || m.mime_type?.startsWith('video/')
+                );
+                
+                if (videoMedia) {
+                    videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
+                    console.log('[Player] Média vidéo trouvé dans media array:', videoPath);
+                }
+            }
+            
+            if (!videoPath) {
+                throw new Error('Aucun chemin vidéo trouvé pour cette leçon');
+            }
+            
+            // IMPORTANT: Vérifier si le fichier a l'extension .enc
+            if (videoPath.endsWith('.enc')) {
+                isEncrypted = true;
+                console.log('[Player] ✓ Fichier .enc détecté - chiffrement confirmé');
+            } else if (!videoPath.startsWith('http')) {
+                console.warn('[Player] ⚠️ Fichier local SANS extension .enc - peut être un problème');
+            }
+            
+            console.log('[Player] Chemin vidéo final:', {
                 path: videoPath,
-                mimeType: 'video/mp4'
+                isEncrypted: isEncrypted,
+                isUrl: videoPath.startsWith('http'),
+                isAbsolute: videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)
             });
             
-            const streamResult = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
+            // Déterminer comment accéder à la vidéo
+            let streamUrl;
             
-            console.log('[Player] Résultat de createStreamUrl:', {
-                success: streamResult.success,
-                hasUrl: !!streamResult.url,
-                error: streamResult.error
-            });
-            
-            if (streamResult.success && streamResult.url) {
-                console.log('[Player] URL de streaming créée avec succès:', streamResult.url);
-                video.src = streamResult.url;
-            } else {
-                throw new Error(streamResult.error || 'Échec de la création de l\'URL de streaming');
+            // Si c'est une URL HTTP, l'utiliser directement
+            if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+                console.log('[Player] URL HTTP détectée, utilisation directe');
+                streamUrl = videoPath;
+            }
+            // Si le fichier est chiffré (.enc), TOUJOURS utiliser le SecureMediaPlayer
+            else if (isEncrypted) {
+                console.log('[Player] Fichier .enc détecté, création d\'un stream sécurisé OBLIGATOIRE');
+                
+                // Vérifier la disponibilité du SecureMediaPlayer
+                if (!window.electronAPI?.media?.createStreamUrl) {
+                    throw new Error('SecureMediaPlayer non disponible pour lire les fichiers chiffrés');
+                }
+                
+                try {
+                    const streamResult = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
+                    
+                    console.log('[Player] Résultat createStreamUrl:', {
+                        success: streamResult.success,
+                        hasUrl: !!streamResult.url,
+                        error: streamResult.error
+                    });
+                    
+                    if (streamResult.success && streamResult.url) {
+                        streamUrl = streamResult.url;
+                        console.log('[Player] ✓ Stream sécurisé créé:', streamUrl);
+                    } else {
+                        throw new Error(streamResult.error || 'Échec de création du stream sécurisé');
+                    }
+                } catch (error) {
+                    console.error('[Player] Erreur création stream sécurisé:', error);
+                    throw new Error('Impossible de lire le fichier chiffré: ' + error.message);
+                }
+            }
+            // Si fichier local non chiffré (ne devrait plus arriver avec .enc)
+            else {
+                console.warn('[Player] Fichier local non chiffré - lecture directe');
+                if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
+                    streamUrl = `file://${videoPath}`;
+                } else {
+                    streamUrl = videoPath;
+                }
             }
             
-        } else {
-            // Fallback : utiliser le chemin direct
-            console.warn('[Player] SecureMediaPlayer non disponible, lecture directe');
-            console.warn('[Player] ATTENTION: La lecture directe ne fonctionnera que si le fichier n\'est PAS chiffré');
+            console.log('[Player] URL de streaming finale:', streamUrl);
             
-            if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
-                video.src = `file://${videoPath}`;
-            } else if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
-                video.src = videoPath;
-            } else {
-                // Supposer que c'est un chemin relatif
-                video.src = videoPath;
+            // Vérifier que l'URL est valide
+            if (!streamUrl) {
+                throw new Error('URL de streaming invalide');
             }
-        }
-        
-    } catch (error) {
-        console.error('[Player] ERREUR lors de la création de l\'URL de streaming:', error);
-        console.error('[Player] Stack trace:', error.stack);
-        
-        // Tenter le fallback en dernier recours
-        console.warn('[Player] Tentative de lecture directe (fallback d\'urgence)');
-        if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
-            video.src = `file://${videoPath}`;
-        } else {
-            video.src = videoPath;
-        }
-    }
-    
-    console.log('[Player] Source vidéo définie:', video.src);
-    
-    // Charger les sous-titres si disponibles
-    if (PlayerState.currentLesson.subtitle_path) {
-        console.log('[Player] Chargement des sous-titres:', PlayerState.currentLesson.subtitle_path);
-        const track = document.createElement('track');
-        track.kind = 'subtitles';
-        track.label = 'Français';
-        track.srclang = 'fr';
-        track.src = `file://${PlayerState.currentLesson.subtitle_path}`;
-        track.default = PlayerState.subtitlesEnabled;
-        
-        // Retirer les anciennes pistes
-        video.querySelectorAll('track').forEach(t => t.remove());
-        video.appendChild(track);
-    }
-    
-    // Appliquer les paramètres
-    video.playbackRate = PlayerState.playbackRate;
-    video.volume = PlayerState.volume;
-    video.muted = PlayerState.isMuted;
-    
-    console.log('[Player] Paramètres vidéo appliqués:', {
-        playbackRate: video.playbackRate,
-        volume: video.volume,
-        muted: video.muted
-    });
-    
-    // Écouter l'événement loadeddata pour masquer le loader
-    video.addEventListener('loadeddata', () => {
-        this.hideLoading();
-        console.log('[Player] ✓ Vidéo chargée avec succès');
-        console.log('[Player] Métadonnées vidéo:', {
-            duration: video.duration,
-            videoWidth: video.videoWidth,
-            videoHeight: video.videoHeight,
-            readyState: video.readyState
-        });
-    }, { once: true });
-    
-    // Écouter l'événement error
-    video.addEventListener('error', (e) => {
-        this.hideLoading();
-        console.error('[Player] ❌ ERREUR de chargement vidéo:', e);
-        console.error('[Player] Détails de l\'erreur:', {
-            errorCode: video.error?.code,
-            errorMessage: video.error?.message,
-            errorDetails: video.error,
-            videoSrc: video.src,
-            networkState: video.networkState,
-            readyState: video.readyState
-        });
-        
-        // Afficher un message d'erreur détaillé
-        let errorMessage = 'Erreur lors du chargement de la vidéo';
-        if (video.error) {
-            switch (video.error.code) {
-                case 1:
-                    errorMessage = 'Le chargement de la vidéo a été abandonné';
-                    break;
-                case 2:
-                    errorMessage = 'Erreur réseau lors du chargement';
-                    break;
-                case 3:
-                    errorMessage = 'Erreur de décodage de la vidéo';
-                    break;
-                case 4:
-                    errorMessage = 'Format vidéo non supporté ou fichier introuvable';
-                    console.error('[Player] Erreur de format/fichier. Vérifiez que:', 
-                        '\n- Le fichier existe à l\'emplacement indiqué',
-                        '\n- Le fichier n\'est pas corrompu',
-                        '\n- Si le fichier est chiffré, le SecureMediaPlayer doit être utilisé'
-                    );
-                    break;
+            
+            // Configurer les événements avant de définir la source
+            const loadedDataHandler = () => {
+                console.log('[Player] ✓ Vidéo chargée avec succès');
+                this.hideLoading();
+                
+                // Afficher les contrôles
+                const videoControls = document.getElementById('video-controls');
+                if (videoControls) {
+                    videoControls.style.display = '';
+                    videoControls.classList.remove('hidden');
+                }
+                
+                // Appliquer les paramètres sauvegardés
+                video.volume = PlayerState.volume;
+                video.playbackRate = PlayerState.playbackRate;
+                video.muted = PlayerState.isMuted;
+                
+                // Auto-play si activé
+                if (PlayerState.autoplay && video.paused) {
+                    video.play().catch(err => {
+                        console.warn('[Player] Auto-play bloqué:', err);
+                    });
+                }
+            };
+            
+            const errorHandler = async (e) => {
+                console.error('[Player] ❌ Erreur de chargement vidéo:', e);
+                this.hideLoading();
+                
+                const error = video.error;
+                let errorMessage = 'Erreur lors du chargement de la vidéo';
+                
+                if (error) {
+                    console.error('[Player] Code d\'erreur:', error.code);
+                    console.error('[Player] Message d\'erreur:', error.message);
+                    
+                    switch (error.code) {
+                        case 1:
+                            errorMessage = 'Le chargement a été interrompu';
+                            break;
+                        case 2:
+                            errorMessage = 'Erreur réseau - Vérifiez votre connexion';
+                            break;
+                        case 3:
+                            errorMessage = 'Erreur de décodage - Le fichier peut être corrompu';
+                            break;
+                        case 4:
+                            errorMessage = 'Format non supporté ou fichier introuvable';
+                            
+                            // Si c'est un fichier .enc, l'erreur vient probablement du SecureMediaPlayer
+                            if (isEncrypted) {
+                                errorMessage = 'Impossible de déchiffrer le fichier vidéo';
+                                console.error('[Player] Erreur critique: Échec du déchiffrement du fichier .enc');
+                            }
+                            break;
+                    }
+                }
+                
+                this.showError(errorMessage);
+                this.displayNoMediaMessage();
+            };
+            
+            // Attacher les événements
+            video.addEventListener('loadeddata', loadedDataHandler, { once: true });
+            video.addEventListener('error', errorHandler, { once: true });
+            
+            // Ajouter un timeout pour détecter les problèmes de chargement
+            const loadTimeout = setTimeout(() => {
+                console.warn('[Player] Timeout de chargement vidéo');
+                video.removeEventListener('loadeddata', loadedDataHandler);
+                video.removeEventListener('error', errorHandler);
+                this.hideLoading();
+                
+                if (isEncrypted) {
+                    this.showError('Le déchiffrement de la vidéo prend trop de temps');
+                } else {
+                    this.showError('Le chargement de la vidéo prend trop de temps');
+                }
+                
+                this.displayNoMediaMessage();
+            }, 30000); // 30 secondes
+            
+            // Annuler le timeout si la vidéo se charge
+            video.addEventListener('loadeddata', () => {
+                clearTimeout(loadTimeout);
+            }, { once: true });
+            
+            // Charger la vidéo
+            video.src = streamUrl;
+            video.load();
+            
+            // Charger les sous-titres si disponibles
+            if (PlayerState.currentLesson.subtitle_path) {
+                this.loadSubtitles(PlayerState.currentLesson.subtitle_path);
             }
+            
+        } catch (error) {
+            console.error('[Player] Erreur lors du chargement:', error);
+            this.hideLoading();
+            this.showError(error.message);
+            this.displayNoMediaMessage();
         }
-        
-        this.displayNoMediaMessage();
-        showError(errorMessage);
-    }, { once: true });
+    },
     
-    console.log('[Player] <== loadVideo() terminé, en attente du chargement...');
-},
-   
    // Charger un document
    async loadDocument() {
        const video = PlayerState.videoElement;
