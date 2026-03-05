@@ -26,7 +26,6 @@
     "start": "electron .",
     "dev": "cross-env NODE_ENV=development electron .",
     "dev:reload": "cross-env NODE_ENV=development nodemon --exec electron .",
-    "pretest": "npm rebuild better-sqlite3 2>/dev/null || true",
     "test": "mocha tests/**/*.test.js --timeout 10000 --exit",
     "test:watch": "mocha tests/**/*.test.js --watch --exit",
     "test:coverage": "nyc mocha tests/**/*.test.js",
