@@ -62,20 +62,20 @@ download: {
     cancelDownload: (downloadId) => 
       ipcRenderer.invoke('cancel-download', downloadId),
     pauseDownload: (downloadId) => 
-      ipcRenderer.invoke('pause-download', downloadId),
+      ipcRenderer.invoke('download:pauseDownload', downloadId),
     resumeDownload: (downloadId) => 
-      ipcRenderer.invoke('resume-download', downloadId),
+      ipcRenderer.invoke('download:resumeDownload', downloadId),
     getAllDownloads: () => 
       ipcRenderer.invoke('get-all-downloads'),
     getDownloadStatus: (downloadId) => 
       ipcRenderer.invoke('get-download-status', downloadId),
     removeFromHistory: (downloadId) => 
-      ipcRenderer.invoke('remove-from-history', downloadId)
+      ipcRenderer.invoke('download:removeFromHistory', downloadId)
 },
 
 // Ajouter aussi dans la section system si elle n'existe pas
 system: {
-    getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+    getSystemInfo: () => ipcRenderer.invoke('system-get-info'),
     getStorageInfo: () => ipcRenderer.invoke('get-storage-info')
 },
   

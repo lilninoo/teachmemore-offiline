@@ -459,25 +459,11 @@ async loadVideo() {
         let videoPath = null;
         let isEncrypted = false;
         
-        // Vérifier si on a un chemin chiffré
+        // Vérifier si on a un chemin chiffré (fichier .enc)
         if (PlayerState.currentLesson.file_path_encrypted) {
-            console.log('[Player] Chemin chiffré détecté, déchiffrement...');
-            try {
-                // Déchiffrer le chemin
-                const decryptResult = await window.electronAPI.db.decryptPath(
-                    PlayerState.currentLesson.file_path_encrypted
-                );
-                if (decryptResult.success) {
-                    videoPath = decryptResult.path;
-                    isEncrypted = true;
-                } else {
-                    console.warn('[Player] Échec du déchiffrement du chemin');
-                    videoPath = PlayerState.currentLesson.file_path;
-                }
-            } catch (error) {
-                console.error('[Player] Erreur lors du déchiffrement:', error);
-                videoPath = PlayerState.currentLesson.file_path;
-            }
+            console.log('[Player] Fichier chiffré détecté');
+            videoPath = PlayerState.currentLesson.file_path_encrypted;
+            isEncrypted = true;
         } else if (PlayerState.currentLesson.file_path) {
             videoPath = PlayerState.currentLesson.file_path;
         } else if (PlayerState.currentLesson.video_url) {
@@ -489,19 +475,9 @@ async loadVideo() {
                 m.type === 'video' || m.mime_type?.startsWith('video/')
             );
             if (videoMedia) {
-                // Vérifier si le média a un chemin chiffré
                 if (videoMedia.path_encrypted) {
-                    try {
-                        const decryptResult = await window.electronAPI.db.decryptPath(
-                            videoMedia.path_encrypted
-                        );
-                        if (decryptResult.success) {
-                            videoPath = decryptResult.path;
-                            isEncrypted = true;
-                        }
-                    } catch (error) {
-                        console.error('[Player] Erreur déchiffrement média:', error);
-                    }
+                    videoPath = videoMedia.path_encrypted;
+                    isEncrypted = true;
                 } else {
                     videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
                 }
@@ -557,14 +533,22 @@ async loadVideo() {
             console.log('[Player] Utilisation du SecureMediaHandler');
             streamUrl = await window.secureMediaHandler.createStreamUrl(videoPath, 'video/mp4');
         }
-        // Sinon, utiliser le chemin direct
-        else {
-            console.log('[Player] Utilisation du chemin direct');
-            if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
-                streamUrl = `file://${videoPath}`;
-            } else {
-                streamUrl = videoPath;
+        // Sinon, utiliser le stream sécurisé pour tout fichier local
+        else if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
+            console.log('[Player] Fichier local, création stream sécurisé');
+            try {
+                const streamResult = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
+                if (streamResult.success && streamResult.url) {
+                    streamUrl = streamResult.url;
+                } else {
+                    throw new Error(streamResult.error || 'Stream creation failed');
+                }
+            } catch (error) {
+                console.error('[Player] Erreur stream fichier local:', error);
+                throw new Error('Impossible de lire le fichier vidéo');
             }
+        } else {
+            streamUrl = videoPath;
         }
         
         console.log('[Player] URL de streaming finale:', streamUrl);
