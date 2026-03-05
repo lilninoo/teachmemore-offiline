@@ -141,6 +141,8 @@ system: {
       ipcRenderer.invoke('media:createStreamUrl', encryptedPath, mimeType),
     decryptFile: (encryptedPath, outputPath) => 
       ipcRenderer.invoke('media:decryptFile', encryptedPath, outputPath),
+    closeStream: (streamUrl) =>
+      ipcRenderer.invoke('media:closeStream', streamUrl),
     // Méthode existante pour compatibilité
     createStream: (filePath, mimeType) =>
       ipcRenderer.invoke('create-stream-url', { filePath, mimeType })

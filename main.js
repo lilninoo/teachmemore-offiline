@@ -797,7 +797,27 @@ function createMainWindow() {
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
-    
+
+    mainWindow.webContents.on('render-process-gone', (event, details) => {
+        log.error('Renderer process crashed:', details.reason);
+        if (details.reason === 'crashed' || details.reason === 'oom') {
+            log.info('Reloading after renderer crash...');
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.loadFile(path.join(__dirname, 'src/index.html'));
+                }
+            }, 1000);
+        }
+    });
+
+    mainWindow.webContents.on('unresponsive', () => {
+        log.warn('Renderer became unresponsive');
+    });
+
+    mainWindow.webContents.on('responsive', () => {
+        log.info('Renderer is responsive again');
+    });
+
     if (isDev) {
         mainWindow.webContents.openDevTools();
     }
