@@ -720,21 +720,21 @@ showError(message) {
             </svg>
             <h3>Erreur de lecture</h3>
             <p>${this.escapeHtml(message)}</p>
-            <button onclick="playerManager.retryLoad()" class="btn btn-primary">
+            <button data-action="retryLoad" class="btn btn-primary">
                 Réessayer
             </button>
         </div>
     `;
     
+    errorOverlay.querySelector('[data-action="retryLoad"]').addEventListener('click', () => playerManager.retryLoad());
+    
     const videoWrapper = document.getElementById('video-wrapper');
     if (videoWrapper) {
-        // Supprimer l'ancienne erreur si elle existe
         const oldError = videoWrapper.querySelector('.player-error-overlay');
         if (oldError) oldError.remove();
         
         videoWrapper.appendChild(errorOverlay);
         
-        // Supprimer après 10 secondes
         setTimeout(() => errorOverlay.remove(), 10000);
     }
 },
@@ -780,7 +780,7 @@ loadSubtitles(subtitlePath) {
             <div class="player-wrapper">
                 <!-- Header -->
                 <div class="player-header">
-                    <button class="btn-icon" onclick="playerManager.exitPlayer()" title="Retour aux cours">
+                    <button class="btn-icon" data-action="exitPlayer" title="Retour aux cours">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
                         </svg>
@@ -793,12 +793,12 @@ loadSubtitles(subtitlePath) {
                         <span id="player-lesson-name">Leçon</span>
                     </div>
                     <div class="player-header-actions">
-                        <button class="btn-icon" onclick="playerManager.toggleTheaterMode()" title="Mode cinéma">
+                        <button class="btn-icon" data-action="toggleTheaterMode" title="Mode cinéma">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 6H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H5V8h14v8z"/>
                             </svg>
                         </button>
-                        <button class="btn-icon" onclick="playerManager.toggleSidebar()" title="Afficher/Masquer la navigation">
+                        <button class="btn-icon" data-action="toggleSidebar" title="Afficher/Masquer la navigation">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/>
                             </svg>
@@ -812,19 +812,19 @@ loadSubtitles(subtitlePath) {
                     <div class="player-sidebar" id="player-sidebar">
                         <!-- Tabs -->
                         <div class="sidebar-tabs">
-                            <button class="tab-btn active" data-tab="navigation" onclick="playerManager.switchTab('navigation')">
+                            <button class="tab-btn active" data-tab="navigation" data-action="switchTab">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M3 9h14V7H3v2zm0 4h14v-2H3v2zm0 4h14v-2H3v2zm16 0h2v-2h-2v2zm0-10v2h2V7h-2zm0 6h2v-2h-2v2z"/>
                                 </svg>
                                 Navigation
                             </button>
-                            <button class="tab-btn" data-tab="notes" onclick="playerManager.switchTab('notes')">
+                            <button class="tab-btn" data-tab="notes" data-action="switchTab">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
                                 </svg>
                                 Notes
                             </button>
-                            <button class="tab-btn" data-tab="resources" onclick="playerManager.switchTab('resources')">
+                            <button class="tab-btn" data-tab="resources" data-action="switchTab">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                     <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/>
                                 </svg>
@@ -843,7 +843,7 @@ loadSubtitles(subtitlePath) {
                                 <div class="notes-container">
                                     <div class="notes-header">
                                         <h3>Mes Notes</h3>
-                                        <button class="btn-sm btn-primary" onclick="playerManager.addNote()">
+                                        <button class="btn-sm btn-primary" data-action="addNote">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                                             </svg>
@@ -937,7 +937,7 @@ loadSubtitles(subtitlePath) {
                                         </button>
 
                                         <!-- Navigation entre leçons -->
-                                        <button class="control-btn" onclick="playerManager.loadPreviousLesson()" 
+                                        <button class="control-btn" data-action="loadPreviousLesson" 
                                                 title="Leçon précédente (Shift+P)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
@@ -945,18 +945,18 @@ loadSubtitles(subtitlePath) {
                                         </button>
                                         
                                         <!-- Skip buttons -->
-                                        <button class="control-btn" onclick="playerManager.skipBackward()" title="Reculer de 10s (←)">
+                                        <button class="control-btn" data-action="skipBackward" title="Reculer de 10s (←)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M12 5V1L7 6l5 5V7c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
                                             </svg>
                                         </button>
-                                        <button class="control-btn" onclick="playerManager.skipForward()" title="Avancer de 10s (→)">
+                                        <button class="control-btn" data-action="skipForward" title="Avancer de 10s (→)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M12 5V1l5 5-5 5V7c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
                                             </svg>
                                         </button>
                                         
-                                        <button class="control-btn" onclick="playerManager.loadNextLesson()" 
+                                        <button class="control-btn" data-action="loadNextLesson" 
                                                 title="Leçon suivante (Shift+N)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
@@ -991,7 +991,7 @@ loadSubtitles(subtitlePath) {
                                     
                                     <div class="controls-right">
                                         <!-- Bookmarks -->
-                                        <button class="control-btn" onclick="playerManager.addBookmark()" title="Ajouter un signet (B)">
+                                        <button class="control-btn" data-action="addBookmark" title="Ajouter un signet (B)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M17 3H7c-1.1 0-1.99.9-1.99 2L5 21l7-3 7 3V5c0-1.1-.9-2-2-2z"/>
                                             </svg>
@@ -1032,21 +1032,21 @@ loadSubtitles(subtitlePath) {
                                         </div>
                                         
                                         <!-- Subtitles -->
-                                        <button class="control-btn" id="subtitles-btn" onclick="playerManager.toggleSubtitles()" title="Sous-titres (C)">
+                                        <button class="control-btn" id="subtitles-btn" data-action="toggleSubtitles" title="Sous-titres (C)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM4 12h4v2H4v-2zm10 6H4v-2h10v2zm6 0h-4v-2h4v2zm0-4H10v-2h10v2z"/>
                                             </svg>
                                         </button>
                                         
                                         <!-- Picture in Picture -->
-                                        <button class="control-btn" onclick="playerManager.togglePiP()" title="Picture-in-Picture (P)">
+                                        <button class="control-btn" data-action="togglePiP" title="Picture-in-Picture (P)">
                                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M19 7h-8v6h8V7zm2-4H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16.01H3V4.98h18v14.03z"/>
                                             </svg>
                                         </button>
                                         
                                         <!-- Fullscreen -->
-                                        <button class="control-btn" onclick="playerManager.toggleFullscreen()" title="Plein écran (F)">
+                                        <button class="control-btn" data-action="toggleFullscreen" title="Plein écran (F)">
                                             <svg class="fullscreen-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                                 <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
                                             </svg>
@@ -1094,7 +1094,7 @@ loadSubtitles(subtitlePath) {
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3>Ajouter une note</h3>
-                        <button class="modal-close" onclick="playerManager.closeNoteModal()">×</button>
+                        <button class="modal-close" data-action="closeNoteModal">×</button>
                     </div>
                     <div class="modal-body">
                         <textarea id="note-text" placeholder="Écrivez votre note ici..." rows="5"></textarea>
@@ -1103,8 +1103,8 @@ loadSubtitles(subtitlePath) {
                         </div>
                     </div>
                     <div class="modal-footer">
-                        <button class="btn btn-secondary" onclick="playerManager.closeNoteModal()">Annuler</button>
-                        <button class="btn btn-primary" onclick="playerManager.saveNote()">Enregistrer</button>
+                        <button class="btn btn-secondary" data-action="closeNoteModal">Annuler</button>
+                        <button class="btn btn-primary" data-action="saveNote">Enregistrer</button>
                     </div>
                 </div>
             </div>
@@ -1114,6 +1114,41 @@ loadSubtitles(subtitlePath) {
         // Ajouter au DOM
         document.body.insertAdjacentHTML('beforeend', playerHTML);
         console.log('[Player] Interface du player créée avec succès');
+        
+        // Attach event delegation for all data-action buttons in the player
+        const playerPage = document.getElementById('player-page');
+        if (playerPage) {
+            playerPage.addEventListener('click', (e) => {
+                const actionEl = e.target.closest('[data-action]');
+                if (!actionEl) return;
+                const action = actionEl.dataset.action;
+                switch (action) {
+                    case 'exitPlayer': playerManager.exitPlayer(); break;
+                    case 'toggleTheaterMode': playerManager.toggleTheaterMode(); break;
+                    case 'toggleSidebar': playerManager.toggleSidebar(); break;
+                    case 'switchTab': playerManager.switchTab(actionEl.dataset.tab); break;
+                    case 'addNote': playerManager.addNote(); break;
+                    case 'loadPreviousLesson': playerManager.loadPreviousLesson(); break;
+                    case 'skipBackward': playerManager.skipBackward(); break;
+                    case 'skipForward': playerManager.skipForward(); break;
+                    case 'loadNextLesson': playerManager.loadNextLesson(); break;
+                    case 'addBookmark': playerManager.addBookmark(); break;
+                    case 'toggleSubtitles': playerManager.toggleSubtitles(); break;
+                    case 'togglePiP': playerManager.togglePiP(); break;
+                    case 'toggleFullscreen': playerManager.toggleFullscreen(); break;
+                    case 'closeNoteModal': playerManager.closeNoteModal(); break;
+                    case 'saveNote': playerManager.saveNote(); break;
+                    case 'retryLoad': playerManager.retryLoad(); break;
+                    case 'downloadAttachment': playerManager.downloadAttachment(actionEl.dataset.id); break;
+                    case 'loadLesson': playerManager.loadLesson(parseInt(actionEl.dataset.lessonId)); break;
+                    case 'seekTo': playerManager.seekTo(parseFloat(actionEl.dataset.time)); break;
+                    case 'deleteNote': playerManager.deleteNote(parseInt(actionEl.dataset.noteId)); break;
+                    case 'downloadResource': playerManager.downloadResource(parseInt(actionEl.dataset.resourceId)); break;
+                    case 'downloadCertificate': playerManager.downloadCertificate(); break;
+                }
+            });
+        }
+        
         this.initializeElements();
     },
     
@@ -1639,7 +1674,7 @@ loadAttachments(attachments) {
                                 <h4>${this.escapeHtml(name)}</h4>
                                 <p>${size ? this.formatFileSize(size) : ''}</p>
                             </div>
-                            <button class="btn btn-primary btn-sm" onclick="playerManager.downloadAttachment('${id}')">
+                            <button class="btn btn-primary btn-sm" data-action="downloadAttachment" data-id="${id}">
                                 Télécharger
                             </button>
                         </div>
@@ -1837,7 +1872,7 @@ loadAttachments(attachments) {
                                 <h4>${this.escapeHtml(attachment.name || 'Document')}</h4>
                                 <p>${attachment.size ? this.formatFileSize(attachment.size) : ''}</p>
                             </div>
-                            <button class="btn btn-primary btn-sm" onclick="playerManager.downloadAttachment('${attachment.id || attachment.url}')">
+                            <button class="btn btn-primary btn-sm" data-action="downloadAttachment" data-id="${attachment.id || attachment.url}">
                                 Télécharger
                             </button>
                         </div>
@@ -1864,7 +1899,7 @@ loadAttachments(attachments) {
         playerPage.innerHTML = `
             <div class="player-emergency">
                 <div class="player-header" style="padding: 20px; border-bottom: 1px solid #ddd;">
-                    <button onclick="playerManager.exitPlayer()" class="btn btn-secondary">← Retour aux cours</button>
+                    <button data-action="exitPlayer" class="btn btn-secondary">← Retour aux cours</button>
                     <h2 style="margin: 10px 0;">Lecteur de cours (Mode minimal)</h2>
                 </div>
                 <div id="video-wrapper" style="padding: 20px; background: #000; min-height: 400px; display: flex; align-items: center; justify-content: center;">
@@ -1882,6 +1917,8 @@ loadAttachments(attachments) {
                 </div>
             </div>
         `;
+        
+        playerPage.querySelector('[data-action="exitPlayer"]').addEventListener('click', () => playerManager.exitPlayer());
         
         // Ajouter un style minimal
         const style = document.createElement('style');
@@ -2542,7 +2579,7 @@ loadAttachments(attachments) {
                navHTML += `
                    <div class="nav-lesson ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''}" 
                         data-lesson-id="${lesson.lesson_id}"
-                        onclick="playerManager.loadLesson(${lesson.lesson_id})">
+                        data-action="loadLesson">
                        <span class="lesson-number">${index + 1}</span>
                        <span class="lesson-icon">${icon}</span>
                        <div class="lesson-info">
@@ -2601,13 +2638,13 @@ loadAttachments(attachments) {
 createNavigationControls() {
     return `
         <!-- Navigation entre leçons -->
-        <button class="control-btn" onclick="playerManager.loadPreviousLesson()" 
+        <button class="control-btn" data-action="loadPreviousLesson" 
                 title="Leçon précédente (Shift+P)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
             </svg>
         </button>
-        <button class="control-btn" onclick="playerManager.loadNextLesson()" 
+        <button class="control-btn" data-action="loadNextLesson" 
                 title="Leçon suivante (Shift+N)">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
@@ -2694,10 +2731,10 @@ showCourseCompletion() {
                     </div>
                 </div>
                 <div class="completion-actions">
-                    <button class="btn btn-secondary" onclick="playerManager.exitPlayer()">
+                    <button class="btn btn-secondary" data-action="exitPlayer">
                         Retour aux cours
                     </button>
-                    <button class="btn btn-primary" onclick="playerManager.downloadCertificate()">
+                    <button class="btn btn-primary" data-action="downloadCertificate">
                         Télécharger le certificat
                     </button>
                 </div>
@@ -2830,10 +2867,10 @@ async downloadCertificate() {
            .map(note => `
                <div class="note-item" data-note-id="${note.id}">
                    <div class="note-header">
-                       <span class="note-timestamp" onclick="playerManager.seekTo(${note.timestamp})">
+                       <span class="note-timestamp" data-action="seekTo" data-time="${note.timestamp}">
                            ${this.formatTime(note.timestamp)}
                        </span>
-                       <button class="btn-icon small" onclick="playerManager.deleteNote(${note.id})">
+                       <button class="btn-icon small" data-action="deleteNote" data-note-id="${note.id}">
                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                            </svg>
@@ -2964,7 +3001,7 @@ async downloadCertificate() {
                    <div class="resource-title">${this.escapeHtml(resource.title)}</div>
                    <div class="resource-meta">${this.formatFileSize(resource.size)} • ${resource.type}</div>
                </div>
-               <button class="btn btn-sm" onclick="playerManager.downloadResource(${resource.id})">
+               <button class="btn btn-sm" data-action="downloadResource" data-resource-id="${resource.id}">
                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                    </svg>
@@ -3024,7 +3061,7 @@ async downloadCertificate() {
        
        container.innerHTML = transcript.map((segment, index) => `
            <div class="transcript-segment" data-index="${index}" data-start="${segment.start}" data-end="${segment.end}">
-               <span class="transcript-time" onclick="playerManager.seekTo(${segment.start})">
+               <span class="transcript-time" data-action="seekTo" data-time="${segment.start}">
                    ${this.formatTime(segment.start)}
                </span>
                <span class="transcript-text">${this.escapeHtml(segment.text)}</span>
@@ -3512,7 +3549,7 @@ showPlayerPage() {
         <div id="player-page" class="page">
             <div class="player-emergency">
                 <div class="player-header-emergency">
-                    <button onclick="playerManager.exitPlayer()" class="btn btn-secondary">
+                    <button data-action="exitPlayer" class="btn btn-secondary">
                         ← Retour aux cours
                     </button>
                     <h2>Lecteur de cours</h2>
@@ -3527,7 +3564,7 @@ showPlayerPage() {
                             <div class="error-content">
                                 <h3>Impossible de charger le média</h3>
                                 <p id="error-message">Le contenu de cette leçon n'a pas pu être chargé.</p>
-                                <button onclick="playerManager.retryLoad()" class="btn btn-primary">
+                                <button data-action="retryLoad" class="btn btn-primary">
                                     Réessayer
                                 </button>
                             </div>
@@ -3543,6 +3580,17 @@ showPlayerPage() {
         `;
         
         document.body.insertAdjacentHTML('beforeend', emergencyHTML);
+        
+        const emergencyPage = document.getElementById('player-page');
+        if (emergencyPage) {
+            emergencyPage.addEventListener('click', (e) => {
+                const actionEl = e.target.closest('[data-action]');
+                if (!actionEl) return;
+                const action = actionEl.dataset.action;
+                if (action === 'exitPlayer') playerManager.exitPlayer();
+                else if (action === 'retryLoad') playerManager.retryLoad();
+            });
+        }
         
         // Ajouter des styles minimaux
         this.addEmergencyStyles();

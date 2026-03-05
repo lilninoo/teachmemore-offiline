@@ -39,9 +39,11 @@
             container.innerHTML = `
                 <div class="message message-error">
                     <p>Erreur lors du chargement de la progression</p>
-                    <button class="btn btn-sm" onclick="loadProgressPage()">Réessayer</button>
+                    <button class="btn btn-sm" data-action="retryProgress">Réessayer</button>
                 </div>
             `;
+            const retryBtn = container.querySelector('[data-action="retryProgress"]');
+            if (retryBtn) retryBtn.addEventListener('click', () => loadProgressPage());
         }
     };
     
@@ -399,7 +401,7 @@
             <div class="modal" style="max-width: 600px;">
                 <div class="modal-header">
                     <h3 class="modal-title">Certificat de réussite</h3>
-                    <button class="btn btn-icon" onclick="this.closest('.modal-backdrop').remove()">×</button>
+                    <button class="btn btn-icon close-modal-btn">×</button>
                 </div>
                 <div class="modal-body" style="text-align: center;">
                     <div class="certificate-preview" style="padding: 40px; border: 2px solid #2271b1; border-radius: 8px; background: #f8f9fa;">
@@ -415,8 +417,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button class="btn btn-secondary" onclick="this.closest('.modal-backdrop').remove()">Fermer</button>
-                    <button class="btn btn-primary" onclick="downloadCertificate('${courseId}')">
+                    <button class="btn btn-secondary close-modal-btn">Fermer</button>
+                    <button class="btn btn-primary download-cert-btn">
                         Télécharger PDF
                     </button>
                 </div>
@@ -424,6 +426,11 @@
         `;
         
         document.body.appendChild(modal);
+        modal.querySelectorAll('.close-modal-btn').forEach(btn => {
+            btn.addEventListener('click', () => modal.remove());
+        });
+        const certBtn = modal.querySelector('.download-cert-btn');
+        if (certBtn) certBtn.addEventListener('click', () => downloadCertificate(courseId));
     }
     
     // Télécharger le certificat

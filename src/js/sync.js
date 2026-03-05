@@ -785,7 +785,7 @@ function showUpdateNotification(updates) {
     
     notification.innerHTML = `
         <div class="update-notification-content">
-            <button class="notification-close" onclick="dismissUpdateNotification()">×</button>
+            <button class="notification-close" data-action="dismissUpdate">×</button>
             <h4>🎉 Mises à jour disponibles</h4>
             <p>${updates.length} cours ont des nouvelles versions</p>
             <div class="update-list">
@@ -803,10 +803,10 @@ function showUpdateNotification(updates) {
                 <p class="update-size">Taille estimée: ${formatBytes(totalSize)}</p>
             ` : ''}
             <div class="update-actions">
-                <button class="btn btn-primary" onclick="showUpdateManager()">
+                <button class="btn btn-primary" data-action="showUpdateManager">
                     Gérer les mises à jour
                 </button>
-                <button class="btn btn-secondary" onclick="dismissUpdateNotification()">
+                <button class="btn btn-secondary" data-action="dismissUpdate">
                     Plus tard
                 </button>
             </div>
@@ -814,6 +814,13 @@ function showUpdateNotification(updates) {
     `;
     
     document.body.appendChild(notification);
+    notification.addEventListener('click', (e) => {
+        const actionEl = e.target.closest('[data-action]');
+        if (!actionEl) return;
+        const action = actionEl.dataset.action;
+        if (action === 'dismissUpdate') dismissUpdateNotification();
+        else if (action === 'showUpdateManager') showUpdateManager();
+    });
     setTimeout(() => notification.classList.add('show'), 10);
     
     // Auto-masquer après 30 secondes

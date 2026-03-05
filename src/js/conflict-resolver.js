@@ -29,7 +29,7 @@ class ConflictResolver {
             <div class="modal conflict-dialog">
                 <div class="modal-header">
                     <h3 class="modal-title">Conflits de synchronisation détectés</h3>
-                    <button class="btn btn-icon" onclick="conflictResolver.cancel()">
+                    <button class="btn btn-icon" data-action="cancelConflict">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                         </svg>
@@ -46,19 +46,19 @@ class ConflictResolver {
                 </div>
                 <div class="modal-footer">
                     <div class="conflict-actions">
-                        <button class="btn btn-secondary" onclick="conflictResolver.resolveAll('server')">
+                        <button class="btn btn-secondary" data-action="resolveAllServer">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                             </svg>
                             Utiliser toutes les versions serveur
                         </button>
-                        <button class="btn btn-secondary" onclick="conflictResolver.resolveAll('local')">
+                        <button class="btn btn-secondary" data-action="resolveAllLocal">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
                             </svg>
                             Garder toutes mes modifications
                         </button>
-                        <button class="btn btn-primary" onclick="conflictResolver.applyResolution()">
+                        <button class="btn btn-primary" data-action="applyResolution">
                             Appliquer les choix
                         </button>
                     </div>
@@ -67,6 +67,20 @@ class ConflictResolver {
         `;
 
         document.body.appendChild(modal);
+        modal.addEventListener('click', (e) => {
+            const actionEl = e.target.closest('[data-action]');
+            if (!actionEl) return;
+            const action = actionEl.dataset.action;
+            if (action === 'cancelConflict') conflictResolver.cancel();
+            else if (action === 'resolveAllServer') conflictResolver.resolveAll('server');
+            else if (action === 'resolveAllLocal') conflictResolver.resolveAll('local');
+            else if (action === 'applyResolution') conflictResolver.applyResolution();
+        });
+        modal.addEventListener('change', (e) => {
+            const radio = e.target.closest('input[type="radio"][data-conflict-id]');
+            if (!radio) return;
+            conflictResolver.selectVersion(radio.dataset.conflictId, radio.dataset.version);
+        });
         
         // Initialiser les resolutions
         this.pendingResolution = {};
@@ -91,7 +105,7 @@ class ConflictResolver {
                             <input type="radio" 
                                    name="conflict-${conflictId}" 
                                    value="local"
-                                   onchange="conflictResolver.selectVersion('${conflictId}', 'local')"
+                                   data-conflict-id="${conflictId}" data-version="local"
                                    ${this.pendingResolution?.[conflictId] === 'local' ? 'checked' : ''}>
                             <div class="version-content">
                                 <h5>
@@ -114,7 +128,7 @@ class ConflictResolver {
                             <input type="radio" 
                                    name="conflict-${conflictId}" 
                                    value="server"
-                                   onchange="conflictResolver.selectVersion('${conflictId}', 'server')"
+                                   data-conflict-id="${conflictId}" data-version="server"
                                    ${this.pendingResolution?.[conflictId] === 'server' ? 'checked' : ''}>
                             <div class="version-content">
                                 <h5>

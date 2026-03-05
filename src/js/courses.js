@@ -210,9 +210,10 @@ async function loadCourses() {
         activeContainer.innerHTML = `
             <div class="message message-error">
                 Erreur lors du chargement des cours
-                <button class="btn btn-sm" onclick="window.loadCourses()">Réessayer</button>
+                <button class="btn btn-sm" data-action="reloadCourses">Réessayer</button>
             </div>
         `;
+        activeContainer.querySelector('[data-action="reloadCourses"]').addEventListener('click', () => window.loadCourses());
     }
 }
 
@@ -314,7 +315,7 @@ async function displayCourses(courses, container) {
                     </svg>
                     <h3>Aucun cours disponible</h3>
                     <p>Téléchargez des cours pour les consulter hors ligne</p>
-                    <button class="btn btn-primary" onclick="showDownloadModal()">
+                    <button class="btn btn-primary" data-action="showDownloadModal">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                         </svg>
@@ -322,6 +323,8 @@ async function displayCourses(courses, container) {
                     </button>
                 </div>
             `;
+            const dlBtn = container.querySelector('[data-action="showDownloadModal"]');
+            if (dlBtn) dlBtn.addEventListener('click', () => showDownloadModal());
             return;
         }
         
@@ -396,9 +399,11 @@ async function loadCoursesPage() {
         container.innerHTML = `
             <div class="message message-error">
                 <p>Erreur lors du chargement des cours</p>
-                <button class="btn btn-sm" onclick="loadCoursesPage()">Réessayer</button>
+                <button class="btn btn-sm" data-action="retryCoursesPage">Réessayer</button>
             </div>
         `;
+        const retryBtn = container.querySelector('[data-action="retryCoursesPage"]');
+        if (retryBtn) retryBtn.addEventListener('click', () => loadCoursesPage());
     }
 }
 
@@ -477,27 +482,37 @@ function getUniqueCategories() {
 }
 
 function createPaginationHTML(totalPages) {
-    let html = '<div class="pagination">';
+    let html = '<div class="pagination" data-pagination>';
     
-    // Bouton précédent
-    html += `<button class="btn btn-sm" onclick="changePage(${CoursesState.currentPage - 1})" 
+    html += `<button class="btn btn-sm" data-page-num="${CoursesState.currentPage - 1}" 
              ${CoursesState.currentPage === 1 ? 'disabled' : ''}>←</button>`;
     
-    // Numéros de page
     for (let i = 1; i <= totalPages; i++) {
         if (i === 1 || i === totalPages || (i >= CoursesState.currentPage - 2 && i <= CoursesState.currentPage + 2)) {
             html += `<button class="btn btn-sm ${i === CoursesState.currentPage ? 'btn-primary' : ''}" 
-                     onclick="changePage(${i})">${i}</button>`;
+                     data-page-num="${i}">${i}</button>`;
         } else if (i === CoursesState.currentPage - 3 || i === CoursesState.currentPage + 3) {
             html += '<span>...</span>';
         }
     }
     
-    // Bouton suivant
-    html += `<button class="btn btn-sm" onclick="changePage(${CoursesState.currentPage + 1})" 
+    html += `<button class="btn btn-sm" data-page-num="${CoursesState.currentPage + 1}" 
              ${CoursesState.currentPage === totalPages ? 'disabled' : ''}>→</button>`;
     
     html += '</div>';
+    
+    setTimeout(() => {
+        const paginationEl = document.querySelector('[data-pagination]');
+        if (paginationEl) {
+            paginationEl.addEventListener('click', (e) => {
+                const btn = e.target.closest('[data-page-num]');
+                if (btn && !btn.disabled) {
+                    changePage(parseInt(btn.dataset.pageNum));
+                }
+            });
+        }
+    }, 0);
+    
     return html;
 }
 
@@ -635,6 +650,14 @@ async function createCourseCard(course) {
                 openCourse(course.course_id || course.id);
             });
         }
+        
+        const deleteBtn = card.querySelector('.delete-course-btn');
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteCourse(parseInt(deleteBtn.dataset.courseId));
+            });
+        }
     }, 0);
     
     return card;
@@ -652,7 +675,7 @@ function createCourseActions(course, isDownloaded) {
                 </svg>
                 Ouvrir
             </button>
-            <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation(); deleteCourse(${courseId})" title="Supprimer">
+            <button class="btn btn-secondary btn-sm delete-course-btn" data-course-id="${courseId}" title="Supprimer">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                 </svg>
@@ -1083,14 +1106,14 @@ function createDownloadElement(download) {
             </div>
             <div class="download-actions">
                 ${download.status === 'downloading' || download.status === 'pending' ? `
-                    <button class="btn btn-icon" onclick="cancelDownload('${download.id}')" title="Annuler">
+                    <button class="btn btn-icon cancel-dl-btn" data-download-id="${download.id}" title="Annuler">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
                         </svg>
                     </button>
                 ` : ''}
                 ${download.status === 'error' ? `
-                    <button class="btn btn-sm btn-primary" onclick="retryDownload('${download.id}')">
+                    <button class="btn btn-sm btn-primary retry-dl-btn" data-download-id="${download.id}">
                         Réessayer
                     </button>
                 ` : ''}
@@ -1105,6 +1128,12 @@ function createDownloadElement(download) {
             </div>
         ` : ''}
     `;
+    
+    const cancelBtn = el.querySelector('.cancel-dl-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => window.cancelDownload(cancelBtn.dataset.downloadId));
+    
+    const retryBtn = el.querySelector('.retry-dl-btn');
+    if (retryBtn) retryBtn.addEventListener('click', () => window.retryDownload(retryBtn.dataset.downloadId));
     
     return el;
 }
@@ -1153,14 +1182,12 @@ window.createCourseCard = function(course) {
                 <div class="course-actions">
                     ${isDownloaded ? `
                         <button class="btn btn-primary btn-sm play-course-btn" 
-                                data-course-id="${courseId}"
-                                onclick="event.stopPropagation(); window.openCoursePlayer('${courseId}')">
+                                data-course-id="${courseId}">
                             ${progress > 0 ? 'Continuer' : 'Commencer'}
                         </button>
                     ` : `
                         <button class="btn btn-primary btn-sm download-course-btn" 
-                                data-course-id="${courseId}"
-                                onclick="event.stopPropagation(); window.downloadSingleCourse('${courseId}')">
+                                data-course-id="${courseId}">
                             Télécharger
                         </button>
                     `}
@@ -1172,8 +1199,21 @@ window.createCourseCard = function(course) {
 
 // Fonction attachCourseEventListeners également utilisée par app.js
 window.attachCourseEventListeners = function() {
-    // Version simple qui fonctionne avec le HTML généré ci-dessus
     console.log('[Courses] Attaching event listeners for course cards');
+    document.querySelectorAll('.play-course-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const courseId = btn.dataset.courseId;
+            if (window.openCoursePlayer) window.openCoursePlayer(courseId);
+        });
+    });
+    document.querySelectorAll('.download-course-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const courseId = btn.dataset.courseId;
+            if (window.downloadSingleCourse) window.downloadSingleCourse(courseId);
+        });
+    });
 };
 
 // ==================== ACTIONS SUR LES TÉLÉCHARGEMENTS ====================
@@ -1398,7 +1438,7 @@ function showCourseDetails(course) {
         <div class="modal-content" style="max-width: 600px;">
             <div class="modal-header">
                 <h2>${escapeHtml(course.title)}</h2>
-                <button class="modal-close" onclick="this.closest('.modal-backdrop').remove()">×</button>
+                <button class="modal-close close-modal-btn">×</button>
             </div>
             <div class="modal-body">
                 <div class="course-details">
@@ -1428,10 +1468,10 @@ function showCourseDetails(course) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.modal-backdrop').remove()">
+                <button class="btn btn-secondary close-modal-btn">
                     Fermer
                 </button>
-                <button class="btn btn-primary" onclick="this.closest('.modal-backdrop').remove(); downloadSingleCourse(${course.id})">
+                <button class="btn btn-primary download-from-modal-btn">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="margin-right: 4px;">
                         <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                     </svg>
@@ -1442,6 +1482,14 @@ function showCourseDetails(course) {
     `;
     
     document.body.appendChild(modal);
+    
+    modal.querySelectorAll('.close-modal-btn').forEach(btn => {
+        btn.addEventListener('click', () => modal.remove());
+    });
+    modal.querySelector('.download-from-modal-btn').addEventListener('click', () => {
+        modal.remove();
+        downloadSingleCourse(course.id);
+    });
 }
 
 // Afficher le lecteur vidéo
@@ -1565,9 +1613,11 @@ window.initializeCourses = function() {
                 container.innerHTML = `
                     <div class="message message-error">
                         <p>Erreur lors du chargement des cours</p>
-                        <button class="btn btn-sm" onclick="window.loadCoursesPage();">Réessayer</button>
+                        <button class="btn btn-sm" data-action="retryCoursesPage2">Réessayer</button>
                     </div>
                 `;
+                const retryBtn2 = container.querySelector('[data-action="retryCoursesPage2"]');
+                if (retryBtn2) retryBtn2.addEventListener('click', () => window.loadCoursesPage());
             }
         };
     }

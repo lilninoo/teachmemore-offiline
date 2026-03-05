@@ -8,73 +8,63 @@ window.loadPageContent = null;
 
 
 
-// ==================== CONFIGURATION WINSTON ====================
-const winston = require('winston');
-const path = require('path');
-
-// Configuration du logger Winston pour le renderer
-const logger = winston.createLogger({
-    level: 'debug',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
-            const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-            return `${timestamp} [RENDERER-${level.toUpperCase()}] ${message} ${metaStr}`;
-        })
-    ),
-    transports: [
-        // Console transport uniquement (les logs fichiers sont gérés par le main process)
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            )
-        })
-    ]
-});
-
-// Vérifier que les dépendances sont chargées
-if (typeof window.Utils === 'undefined') {
-    console.error('Utils.js doit être chargé avant app.js');
-}
-
-// Si Logger n'existe pas encore, utiliser un fallback
-if (!window.Logger) {
-    window.Logger = {
-        info: console.log,
-        error: console.error,
-        warn: console.warn,
-        debug: console.debug
-    };
-}
-
-// AppLogger pour compatibilité avec le code existant
+// ==================== LOGGING ====================
+// Use the Logger exposed by the preload script via contextBridge
 const AppLogger = {
     log: (message, data = null) => {
-        logger.info(message, data || {});
+        if (window.Logger && window.Logger.log) {
+            window.Logger.log(message, data);
+        } else {
+            console.log(`[App] ${message}`, data || '');
+        }
     },
     error: (message, error = null) => {
-        logger.error(message, error || {});
+        if (window.Logger && window.Logger.error) {
+            window.Logger.error(message, error);
+        } else {
+            console.error(`[App] ${message}`, error || '');
+        }
     },
     warn: (message, data = null) => {
-        logger.warn(message, data || {});
+        if (window.Logger && window.Logger.warn) {
+            window.Logger.warn(message, data);
+        } else {
+            console.warn(`[App] ${message}`, data || '');
+        }
     }
-}
-
-// Rediriger console.log vers Winston
-const originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info,
-    debug: console.debug
 };
 
-console.log = (...args) => logger.info(args.join(' '));
-console.error = (...args) => logger.error(args.join(' '));
-console.warn = (...args) => logger.warn(args.join(' '));
-console.info = (...args) => logger.info(args.join(' '));
-console.debug = (...args) => logger.debug(args.join(' '));
+// logger alias for code that uses logger.info/error/warn/debug (maps to preload Logger)
+const logger = {
+    info: (message, data) => {
+        if (window.Logger && window.Logger.log) {
+            window.Logger.log(message, data);
+        } else {
+            console.log(`[App] ${message}`, data || '');
+        }
+    },
+    error: (message, error) => {
+        if (window.Logger && window.Logger.error) {
+            window.Logger.error(message, error);
+        } else {
+            console.error(`[App] ${message}`, error || '');
+        }
+    },
+    warn: (message, data) => {
+        if (window.Logger && window.Logger.warn) {
+            window.Logger.warn(message, data);
+        } else {
+            console.warn(`[App] ${message}`, data || '');
+        }
+    },
+    debug: (message, data) => {
+        if (window.Logger && window.Logger.debug) {
+            window.Logger.debug(message, data);
+        } else {
+            console.debug(`[App] ${message}`, data || '');
+        }
+    }
+};
 
 // ==================== ÉTAT GLOBAL ====================
 const AppState = {
@@ -1326,6 +1316,17 @@ function setupDownloadButton() {
         });
     }
     
+    const downloadBtn2 = document.getElementById('download-course-btn-2');
+    if (downloadBtn2) {
+        downloadBtn2.addEventListener('click', () => {
+            if (!ConnectionState.isOnline) {
+                showWarning('Le téléchargement nécessite une connexion Internet');
+                return;
+            }
+            showDownloadModal();
+        });
+    }
+    
     const startDownloadBtn = document.getElementById('start-download');
     if (startDownloadBtn) {
         startDownloadBtn.addEventListener('click', () => {
@@ -1591,11 +1592,13 @@ async function loadCourses() {
                     <h3>Erreur de chargement</h3>
                     <p>${error.message || 'Impossible de charger les cours'}</p>
                     ${ConnectionState.isOnline ? 
-                        '<button class="btn btn-primary" onclick="window.loadCourses()">Réessayer</button>' :
+                        '<button class="btn btn-primary" data-action="reloadCourses">Réessayer</button>' :
                         '<p class="text-secondary">Vous êtes en mode hors ligne</p>'
                     }
                 </div>
             `;
+            const retryBtn = coursesContainer.querySelector('[data-action="reloadCourses"]');
+            if (retryBtn) retryBtn.addEventListener('click', () => window.loadCourses());
         }
         
         throw error;
@@ -1621,11 +1624,13 @@ function displayCourses(courses) {
                 <h3>Aucun cours disponible</h3>
                 <p>Vous n'avez pas encore de cours. ${ConnectionState.isOnline ? 'Commencez par télécharger un cours depuis votre plateforme.' : 'Connectez-vous à Internet pour télécharger des cours.'}</p>
                 ${ConnectionState.isOnline ? 
-                    '<button class="btn btn-primary" onclick="showDownloadModal()">Télécharger un cours</button>' :
+                    '<button class="btn btn-primary" data-action="showDownloadModal">Télécharger un cours</button>' :
                     ''
                 }
             </div>
         `;
+        const dlBtn = coursesContainer.querySelector('[data-action="showDownloadModal"]');
+        if (dlBtn) dlBtn.addEventListener('click', () => showDownloadModal());
         return;
     }
     
@@ -1871,8 +1876,8 @@ window.loadCoursesPage = async function() {
                                <p>${escapeHtml(course.instructor_name || 'Instructeur')}</p>
                                <div class="course-actions">
                                    ${isDownloaded ? 
-                                       `<button class="btn btn-primary" onclick="openCourse(${course.course_id || course.id})">Ouvrir</button>` :
-                                       `<button class="btn btn-primary" onclick="downloadSingleCourse(${course.id})">Télécharger</button>`
+                                       `<button class="btn btn-primary" data-action="openCourse" data-course-id="${course.course_id || course.id}">Ouvrir</button>` :
+                                       `<button class="btn btn-primary" data-action="downloadSingleCourse" data-course-id="${course.id}">Télécharger</button>`
                                    }
                                </div>
                            </div>
@@ -1880,32 +1885,44 @@ window.loadCoursesPage = async function() {
                    `;
                }).join('');
                
-               container.innerHTML = `<div class="courses-grid">${coursesHTML}</div>`;
-           }
+              container.innerHTML = `<div class="courses-grid">${coursesHTML}</div>`;
+              container.addEventListener('click', (e) => {
+                  const actionEl = e.target.closest('[data-action]');
+                  if (!actionEl) return;
+                  const action = actionEl.dataset.action;
+                  const courseId = actionEl.dataset.courseId;
+                  if (action === 'openCourse') openCourse(courseId);
+                  else if (action === 'downloadSingleCourse') downloadSingleCourse(courseId);
+              });
+          }
        } else {
            container.innerHTML = `
                <div class="empty-state">
                    <svg width="64" height="64" viewBox="0 0 24 24" fill="currentColor" opacity="0.3">
                        <path d="M12 2L2 7v10c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-10-5z"/>
                    </svg>
-                   <h3>Aucun cours disponible</h3>
-                   <p>Commencez par télécharger un cours depuis votre plateforme.</p>
-                   ${ConnectionState.isOnline ? 
-                       '<button class="btn btn-primary" onclick="showDownloadModal()">Télécharger un cours</button>' :
-                       '<p class="text-secondary">Connectez-vous à Internet pour télécharger des cours</p>'
-                   }
-               </div>
-           `;
-       }
+                  <h3>Aucun cours disponible</h3>
+                  <p>Commencez par télécharger un cours depuis votre plateforme.</p>
+                  ${ConnectionState.isOnline ? 
+                      '<button class="btn btn-primary" data-action="showDownloadModalEmpty">Télécharger un cours</button>' :
+                      '<p class="text-secondary">Connectez-vous à Internet pour télécharger des cours</p>'
+                  }
+              </div>
+          `;
+          const dlBtn2 = container.querySelector('[data-action="showDownloadModalEmpty"]');
+          if (dlBtn2) dlBtn2.addEventListener('click', () => showDownloadModal());
+      }
    } catch (error) {
        logger.error('Erreur lors du chargement de la page des cours:', error);
-       container.innerHTML = `
-           <div class="message message-error">
-               <p>Erreur lors du chargement des cours: ${error.message}</p>
-               <button class="btn btn-sm" onclick="window.loadCoursesPage()">Réessayer</button>
-           </div>
-       `;
-   }
+      container.innerHTML = `
+          <div class="message message-error">
+              <p>Erreur lors du chargement des cours: ${error.message}</p>
+              <button class="btn btn-sm" data-action="retryCoursesPage">Réessayer</button>
+          </div>
+      `;
+      const retryBtn = container.querySelector('[data-action="retryCoursesPage"]');
+      if (retryBtn) retryBtn.addEventListener('click', () => window.loadCoursesPage());
+  }
 };
 
 // Télécharger un cours individuel
@@ -1970,24 +1987,28 @@ async function loadDownloadsPage() {
                    <svg width="64" height="64" viewBox="0 0 24 24" fill="var(--text-secondary)">
                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                    </svg>
-                   <h3>Aucun téléchargement</h3>
-                   <p>Aucun téléchargement en cours ou terminé</p>
-                   ${ConnectionState.isOnline ? 
-                       '<button class="btn btn-primary" onclick="showDownloadModal()">Télécharger un cours</button>' :
-                       '<p class="text-secondary">Connectez-vous à Internet pour télécharger des cours</p>'
-                   }
-               </div>
-           `;
+                  <h3>Aucun téléchargement</h3>
+                  <p>Aucun téléchargement en cours ou terminé</p>
+                  ${ConnectionState.isOnline ? 
+                      '<button class="btn btn-primary" data-action="showDownloadModalDl">Télécharger un cours</button>' :
+                      '<p class="text-secondary">Connectez-vous à Internet pour télécharger des cours</p>'
+                  }
+              </div>
+          `;
+          const dlBtn3 = container.querySelector('[data-action="showDownloadModalDl"]');
+          if (dlBtn3) dlBtn3.addEventListener('click', () => showDownloadModal());
        }
    } catch (error) {
        logger.error('Erreur lors du chargement des téléchargements:', error);
-       container.innerHTML = `
-           <div class="message message-error">
-               <p>Erreur lors du chargement des téléchargements</p>
-               <button class="btn btn-primary" onclick="loadDownloadsPage()">Réessayer</button>
-           </div>
-       `;
-   }
+      container.innerHTML = `
+          <div class="message message-error">
+              <p>Erreur lors du chargement des téléchargements</p>
+              <button class="btn btn-primary" data-action="retryDownloadsPage">Réessayer</button>
+          </div>
+      `;
+      const retryDlBtn = container.querySelector('[data-action="retryDownloadsPage"]');
+      if (retryDlBtn) retryDlBtn.addEventListener('click', () => loadDownloadsPage());
+  }
 }
 
 // Nouvelle fonction pour afficher les téléchargements avec détails
@@ -2107,43 +2128,43 @@ function createDownloadItemHTML(download) {
    // Actions selon le statut
    if (download.status === 'downloading') {
        html += `
-           <button class="btn btn-sm btn-secondary" onclick="pauseDownload('${download.id}')" title="Mettre en pause">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
-               </svg>
-           </button>
+          <button class="btn btn-sm btn-secondary" data-action="pauseDownload" data-download-id="${download.id}" title="Mettre en pause">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/>
+              </svg>
+          </button>
        `;
    } else if (download.status === 'paused') {
        html += `
-           <button class="btn btn-sm btn-primary" onclick="resumeDownload('${download.id}')" title="Reprendre">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M8 5v14l11-7z"/>
-               </svg>
-           </button>
+          <button class="btn btn-sm btn-primary" data-action="resumeDownload" data-download-id="${download.id}" title="Reprendre">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M8 5v14l11-7z"/>
+              </svg>
+          </button>
        `;
    }
    
    if (isActive) {
        html += `
-           <button class="btn btn-sm btn-danger" onclick="cancelDownload('${download.id}')" title="Annuler">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-               </svg>
-           </button>
+          <button class="btn btn-sm btn-danger" data-action="cancelDownload" data-download-id="${download.id}" title="Annuler">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+          </button>
        `;
    } else if (download.status === 'error') {
        html += `
-           <button class="btn btn-sm btn-primary" onclick="retryDownload('${download.id}')">
-               Réessayer
-           </button>
+          <button class="btn btn-sm btn-primary" data-action="retryDownload" data-download-id="${download.id}">
+              Réessayer
+          </button>
        `;
    } else if (download.status === 'completed') {
        html += `
-           <button class="btn btn-sm btn-secondary" onclick="removeFromHistory('${download.id}')" title="Retirer de l'historique">
-               <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-                   <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-               </svg>
-           </button>
+          <button class="btn btn-sm btn-secondary" data-action="removeFromHistory" data-download-id="${download.id}" title="Retirer de l'historique">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
+          </button>
        `;
    }
    
@@ -2182,8 +2203,19 @@ function createDownloadItemHTML(download) {
 }
 
 function attachDownloadEventListeners() {
-   // Les event listeners sont déjà attachés via onclick
-   // Cette fonction peut être utilisée pour ajouter des listeners supplémentaires si nécessaire
+   const container = document.getElementById('downloads-content') || document.querySelector('.downloads-container');
+   if (!container) return;
+   container.addEventListener('click', (e) => {
+       const actionEl = e.target.closest('[data-action]');
+       if (!actionEl) return;
+       const action = actionEl.dataset.action;
+       const downloadId = actionEl.dataset.downloadId;
+       if (action === 'pauseDownload' && downloadId) pauseDownload(downloadId);
+       else if (action === 'resumeDownload' && downloadId) resumeDownload(downloadId);
+       else if (action === 'cancelDownload' && downloadId) cancelDownload(downloadId);
+       else if (action === 'retryDownload' && downloadId) retryDownload(downloadId);
+       else if (action === 'removeFromHistory' && downloadId) removeFromHistory(downloadId);
+   });
 }
 
 // Ajouter les fonctions manquantes
