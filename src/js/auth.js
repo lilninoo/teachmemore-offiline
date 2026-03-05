@@ -542,6 +542,28 @@ window.debugAuth.simulateLoginSuccess = function() {
     console.log('%c✅ Événement login-success simulé', 'background: green; color: white; padding: 5px;');
 };
 
+// Écouter les échecs d'authentification depuis le main process
+if (window.electronAPI) {
+    window.electronAPI.on('force-logout', (data) => {
+        AuthLogger.warn('Force logout reçu:', data);
+        window.AuthState.isLoggedIn = false;
+        window.AuthState.user = null;
+        window.AuthState.apiUrl = null;
+        showLoginPage();
+        showLoginError(data.message || 'Votre session a expiré. Veuillez vous reconnecter.');
+    });
+
+    window.electronAPI.on('refresh-failed', (data) => {
+        AuthLogger.warn('Refresh token échoué:', data);
+        if (!data.canRetry) {
+            window.AuthState.isLoggedIn = false;
+            window.AuthState.user = null;
+            showLoginPage();
+            showLoginError('Votre session a expiré. Veuillez vous reconnecter.');
+        }
+    });
+}
+
 // Export global
 window.AuthManager = {
     showLoginPage,

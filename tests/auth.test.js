@@ -2,7 +2,6 @@
 const { expect } = require('chai');
 const sinon = require('sinon');
 const path = require('path');
-const { app, BrowserWindow } = require('electron');
 
 // Tests unitaires pour l'authentification
 describe('Module d\'authentification', () => {
@@ -39,7 +38,6 @@ describe('Module d\'authentification', () => {
         });
         
         it('devrait gérer une connexion réussie', async () => {
-            // Mock de la réponse axios
             const mockResponse = {
                 data: {
                     token: 'test-token',
@@ -58,35 +56,32 @@ describe('Module d\'authentification', () => {
                 }
             };
             
-            sinon.stub(client.client, 'post').resolves(mockResponse);
+            sinon.stub(client, 'makeRequest').resolves(mockResponse);
             
             const result = await client.login('testuser', 'password123');
             
             expect(result.success).to.be.true;
-            expect(result.user).to.deep.equal(mockResponse.data.user);
-            expect(result.membership).to.deep.equal(mockResponse.data.user.membership);
+            expect(result.user.username).to.equal('testuser');
+            expect(result.user.membership).to.deep.equal(mockResponse.data.user.membership);
             expect(client.token).to.equal('test-token');
             expect(client.refreshToken).to.equal('test-refresh-token');
         });
         
         it('devrait gérer l\'erreur d\'abonnement Paid Memberships Pro', async () => {
-            const errorResponse = {
-                response: {
-                    status: 403,
-                    data: {
-                        code: 'no_membership',
-                        message: 'Vous devez avoir un abonnement actif pour utiliser l\'application'
-                    }
-                }
+            const errorInfo = {
+                type: 'response',
+                status: 403,
+                data: { code: 'no_active_membership', message: 'Abonnement requis' },
+                userMessage: 'Accès refusé. Vérifiez vos permissions.'
             };
             
-            sinon.stub(client.client, 'post').rejects(errorResponse);
+            sinon.stub(client, 'makeRequest').rejects(errorInfo);
             
             const result = await client.login('testuser', 'password123');
             
             expect(result.success).to.be.false;
             expect(result.requiresMembership).to.be.true;
-            expect(result.error).to.include('abonnement actif');
+            expect(result.code).to.equal('no_active_membership');
         });
         
         it('devrait rafraîchir le token avec succès', async () => {
@@ -99,19 +94,22 @@ describe('Module d\'authentification', () => {
                 }
             };
             
-            sinon.stub(client.client, 'post').resolves(mockResponse);
+            const axiosStub = sinon.stub(require('axios'), 'post').resolves(mockResponse);
             
             const result = await client.refreshAccessToken();
             
             expect(result.success).to.be.true;
+            expect(result.expiresIn).to.equal(3600);
             expect(client.token).to.equal('new-token');
+            
+            axiosStub.restore();
         });
         
         it('devrait vérifier l\'abonnement actif', async () => {
             const mockResponse = {
                 data: {
-                    is_active: true,
                     subscription: {
+                        is_active: true,
                         status: 'active',
                         level_id: 1,
                         level_name: 'Premium',
@@ -120,7 +118,7 @@ describe('Module d\'authentification', () => {
                 }
             };
             
-            sinon.stub(client.client, 'get').resolves(mockResponse);
+            sinon.stub(client, 'makeRequest').resolves(mockResponse);
             
             const result = await client.verifySubscription();
             
@@ -132,8 +130,8 @@ describe('Module d\'authentification', () => {
         it('devrait détecter un abonnement expiré', async () => {
             const mockResponse = {
                 data: {
-                    is_active: false,
                     subscription: {
+                        is_active: false,
                         status: 'expired',
                         level_id: 1,
                         level_name: 'Premium',
@@ -142,13 +140,52 @@ describe('Module d\'authentification', () => {
                 }
             };
             
-            sinon.stub(client.client, 'get').resolves(mockResponse);
+            sinon.stub(client, 'makeRequest').resolves(mockResponse);
             
             const result = await client.verifySubscription();
             
             expect(result.success).to.be.true;
             expect(result.isActive).to.be.false;
             expect(result.subscription.status).to.equal('expired');
+        });
+
+        it('devrait retourner success false sur 401 pour verifySubscription', async () => {
+            const errorInfo = {
+                type: 'response',
+                status: 401,
+                userMessage: 'Session expirée. Veuillez vous reconnecter.',
+                requiresReauth: true
+            };
+
+            sinon.stub(client, 'makeRequest').rejects(errorInfo);
+
+            const result = await client.verifySubscription();
+
+            expect(result.success).to.be.false;
+            expect(result.isActive).to.be.false;
+        });
+
+        it('devrait appeler onAuthFailure quand le refresh token expire', async () => {
+            const authFailureSpy = sinon.spy();
+            client.onAuthFailure = authFailureSpy;
+            client.refreshToken = 'old-refresh-token';
+
+            const errorInfo = {
+                type: 'response',
+                status: 401,
+                userMessage: 'Session expirée. Veuillez vous reconnecter.',
+                requiresReauth: true,
+                data: { code: 'token_expired' }
+            };
+
+            sinon.stub(client, 'makeRequest').rejects(errorInfo);
+
+            const result = await client.verifySubscription();
+
+            expect(result.success).to.be.false;
+            expect(result.reason).to.equal('refresh_token_expired');
+            expect(authFailureSpy.calledOnce).to.be.true;
+            expect(authFailureSpy.firstCall.args[0]).to.equal('force-logout');
         });
     });
     
@@ -158,18 +195,25 @@ describe('Module d\'authentification', () => {
         
         beforeEach(() => {
             ipcMain = {
-                handle: sinon.stub()
+                handle: sinon.stub(),
+                on: sinon.stub()
             };
             
             context = {
                 store: mockStore,
                 deviceId: 'test-device-id',
-                app: { getPath: sinon.stub().returns('/test/path') },
+                app: { getPath: sinon.stub().returns('/test/path'), getVersion: sinon.stub().returns('1.0.0') },
                 dialog: {},
-                mainWindow: { webContents: { send: sinon.stub() } },
+                mainWindow: { webContents: { send: sinon.stub() }, isDestroyed: sinon.stub().returns(false) },
                 getApiClient: sinon.stub().returns(mockApiClient),
                 setApiClient: sinon.stub(),
-                getDatabase: sinon.stub()
+                getDatabase: sinon.stub(),
+                getDownloadManager: sinon.stub(),
+                getMediaPlayer: sinon.stub(),
+                getSecureMediaPlayer: sinon.stub(),
+                errorHandler: { handleError: sinon.stub(), getRecentErrors: sinon.stub().returns([]) },
+                config: { isFeatureEnabled: sinon.stub().returns(true) },
+                encryptionKey: 'test-key'
             };
             
             setupIpcHandlers(ipcMain, context);
@@ -188,6 +232,20 @@ describe('Module d\'authentification', () => {
             );
             expect(verifyHandler).to.exist;
         });
+
+        it('devrait enregistrer le handler api-logout', () => {
+            const logoutHandler = ipcMain.handle.args.find(
+                args => args[0] === 'api-logout'
+            );
+            expect(logoutHandler).to.exist;
+        });
+
+        it('devrait enregistrer le handler check-auto-login', () => {
+            const autoLoginHandler = ipcMain.handle.args.find(
+                args => args[0] === 'check-auto-login'
+            );
+            expect(autoLoginHandler).to.exist;
+        });
     });
     
     describe('Base de données sécurisée', () => {
@@ -196,14 +254,13 @@ describe('Module d\'authentification', () => {
         
         beforeEach(() => {
             tempDbPath = path.join(__dirname, 'temp-test.db');
-            db = new SecureDatabase(tempDbPath, 'test-encryption-key');
+            db = new SecureDatabase(tempDbPath, 'test-encryption-key-0123456789abcdef0123456789abcdef');
         });
         
         afterEach(() => {
             if (db) {
                 db.close();
             }
-            // Nettoyer le fichier de test
             const fs = require('fs');
             if (fs.existsSync(tempDbPath)) {
                 fs.unlinkSync(tempDbPath);
@@ -244,14 +301,12 @@ describe('Module d\'authentification', () => {
             expect(retrieved.description).to.equal(courseData.description);
             expect(retrieved.thumbnail).to.equal(courseData.thumbnail);
             
-            // Vérifier que les données sont bien chiffrées dans la DB
             const raw = db.db.prepare('SELECT * FROM courses WHERE course_id = ?').get(1);
             expect(raw.description).to.not.equal(courseData.description);
             expect(raw.thumbnail_encrypted).to.not.equal(courseData.thumbnail);
         });
         
         it('devrait gérer la synchronisation de la progression', () => {
-            // Créer une leçon
             db.saveLesson({
                 lesson_id: 1,
                 section_id: 1,
@@ -260,10 +315,8 @@ describe('Module d\'authentification', () => {
                 content: 'Contenu de la leçon'
             });
             
-            // Mettre à jour la progression
             db.updateLessonProgress(1, 50, false);
             
-            // Vérifier la file de synchronisation
             const unsyncedItems = db.getUnsyncedItems();
             expect(unsyncedItems).to.have.length(1);
             expect(unsyncedItems[0].entity_type).to.equal('lesson');
@@ -275,17 +328,23 @@ describe('Module d\'authentification', () => {
 
 // Tests d'intégration
 describe('Tests d\'intégration - Authentification avec Paid Memberships Pro', () => {
+    afterEach(() => {
+        sinon.restore();
+    });
+
     it('devrait vérifier l\'abonnement après connexion', async () => {
         const LearnPressAPIClient = require('../lib/api-client');
         const client = new LearnPressAPIClient('https://test.com', 'test-device');
         
-        // Mock de la connexion réussie
-        sinon.stub(client.client, 'post').withArgs('/auth/login').resolves({
+        const loginResponse = {
             data: {
                 token: 'test-token',
                 refresh_token: 'refresh-token',
+                expires_in: 3600,
                 user: {
                     id: 1,
+                    username: 'user',
+                    email: 'user@test.com',
                     membership: {
                         level_id: 2,
                         level_name: 'Gold',
@@ -293,25 +352,26 @@ describe('Tests d\'intégration - Authentification avec Paid Memberships Pro', (
                     }
                 }
             }
-        });
-        
-        // Mock de la vérification d'abonnement
-        sinon.stub(client.client, 'get').withArgs('/auth/verify').resolves({
+        };
+
+        const verifyResponse = {
             data: {
-                is_active: true,
                 subscription: {
+                    is_active: true,
                     status: 'active',
                     level_name: 'Gold',
                     expires_at: '2024-12-31'
                 }
             }
-        });
+        };
+
+        const makeRequestStub = sinon.stub(client, 'makeRequest');
+        makeRequestStub.onFirstCall().resolves(loginResponse);
+        makeRequestStub.onSecondCall().resolves(verifyResponse);
         
-        // Se connecter
         const loginResult = await client.login('user', 'pass');
         expect(loginResult.success).to.be.true;
         
-        // Vérifier l'abonnement
         const verifyResult = await client.verifySubscription();
         expect(verifyResult.isActive).to.be.true;
         expect(verifyResult.subscription.level_name).to.equal('Gold');
