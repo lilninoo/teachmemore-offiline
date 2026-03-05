@@ -199,6 +199,12 @@ system: {
       'download-cancelled',
       'course-downloaded',
       
+      // Download manager events
+      'download-manager:download-started',
+      'download-manager:download-progress',
+      'download-manager:download-completed',
+      'download-manager:download-error',
+      
       // Navigation events
       'logout',
       'open-settings',
@@ -246,6 +252,7 @@ system: {
   send: (channel, ...args) => {
     const validOutgoingChannels = [
       'window-ready',
+      'renderer-ready',
       'request-sync',
       'cancel-download',
       'renderer-log',

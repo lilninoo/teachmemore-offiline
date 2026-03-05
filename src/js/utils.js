@@ -425,8 +425,11 @@ function showNotification(message, type = 'info') {
     notification.innerHTML = `
         <span class="notification-icon">${getNotificationIcon(type)}</span>
         <span class="notification-message">${escapeHtml(message)}</span>
-        <button class="notification-close" onclick="this.parentElement.remove()">×</button>
+        <button class="notification-close">×</button>
     `;
+    notification.querySelector('.notification-close').addEventListener('click', function() {
+        this.parentElement.remove();
+    });
     
     document.body.appendChild(notification);
     
@@ -515,7 +518,7 @@ function createCourseCard(course, progress) {
         </div>
         ` : ''}
         <div class="course-actions">
-            <button class="btn btn-icon" onclick="event.stopPropagation(); deleteCourse(${course.course_id})" title="Supprimer">
+            <button class="btn btn-icon course-delete-btn" data-course-id="${course.course_id}" title="Supprimer">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                 </svg>
@@ -523,10 +526,17 @@ function createCourseCard(course, progress) {
         </div>
     `;
     
-    // Ajouter l'événement de clic
+    const deleteBtn = card.querySelector('.course-delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (typeof deleteCourse === 'function') deleteCourse(course.course_id);
+        });
+    }
+
     card.addEventListener('click', () => {
         if (!isExpired) {
-            openCourse(course.course_id);
+            if (typeof openCourse === 'function') openCourse(course.course_id);
         } else {
             showWarning('Ce cours a expiré et ne peut plus être consulté');
         }

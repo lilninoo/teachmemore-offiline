@@ -180,8 +180,11 @@ class RendererLogger {
                 <div class="error-message">${this.truncate(logEntry.message, 100)}</div>
                 <div class="error-time">${new Date(logEntry.timestamp).toLocaleTimeString()}</div>
             </div>
-            <button class="error-dismiss" onclick="this.parentElement.remove()">×</button>
+            <button class="error-dismiss">×</button>
         `;
+        notification.querySelector('.error-dismiss').addEventListener('click', function() {
+            this.parentElement.remove();
+        });
         
         // Ajouter au DOM
         let container = document.getElementById('error-notifications');

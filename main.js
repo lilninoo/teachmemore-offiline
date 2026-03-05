@@ -1,8 +1,8 @@
 // main.js - Point d'entrée principal de l'application Electron
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell, Notification } = require('electron');
-//const { SecureMediaPlayer, getSecureMediaPlayer } = require('./lib/secure-media-player');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, Notification, safeStorage } = require('electron');
 const path = require('path');
-const fs = require('fs');
+const fsSync = require('fs');
+const fs = require('fs').promises;
 const { autoUpdater } = require('electron-updater');
 const Store = require('electron-store');
 const log = require('electron-log');
@@ -10,14 +10,13 @@ const { machineIdSync } = require('node-machine-id');
 const contextMenu = require('electron-context-menu');
 const crypto = require('crypto');
 const { getSecureMediaPlayer: rawGetSecureMediaPlayer } = require('./lib/secure-media-player');
-const encryptionKey = getOrCreateEncryptionKey();
 const ConnectionManager = require('./lib/connection-manager');
 let connectionManager = null;
+let encryptionKey = null;
 
 let secureMediaPlayerInstance = null;
 const context = {
-  // ... autres props existantes ...
-  encryptionKey,
+  get encryptionKey() { return encryptionKey; },
   getSecureMediaPlayer: async () => {
     if (!secureMediaPlayerInstance) {
       secureMediaPlayerInstance = rawGetSecureMediaPlayer(encryptionKey);
@@ -25,7 +24,6 @@ const context = {
     }
     return secureMediaPlayerInstance;
   },
-  // éventuellement expose aussi getMediaPlayer si utilisé ailleurs
 };
 
 // Import des modules personnalisés
@@ -137,38 +135,57 @@ const isDev = config.isDev;
 const deviceId = machineIdSync();
 
 // Générer ou récupérer une clé de chiffrement sécurisée
-function getOrCreateEncryptionKey() {
+// Uses Electron's safeStorage API for OS-level encryption (Keychain/DPAPI/libsecret)
+async function getOrCreateEncryptionKey() {
     const keyFile = path.join(app.getPath('userData'), '.key');
-    
+    const useSafeStorage = safeStorage.isEncryptionAvailable();
+
     try {
-        if (fs.existsSync(keyFile)) {
-            const key = fs.readFileSync(keyFile, 'utf8');
-            // Vérifier que la clé est valide
-            if (key && key.length === 64) {
-                return key;
+        const exists = await fs.access(keyFile).then(() => true).catch(() => false);
+        if (exists) {
+            const raw = await fs.readFile(keyFile);
+
+            if (useSafeStorage) {
+                try {
+                    const key = safeStorage.decryptString(raw);
+                    if (key && key.length === 64) return key;
+                } catch (decryptErr) {
+                    log.warn('safeStorage decrypt failed, trying plaintext fallback:', decryptErr.message);
+                    const plainKey = raw.toString('utf8').trim();
+                    if (plainKey && plainKey.length === 64) {
+                        log.info('Migrating plaintext key to safeStorage');
+                        const encrypted = safeStorage.encryptString(plainKey);
+                        await fs.writeFile(keyFile, encrypted, { mode: 0o600 });
+                        return plainKey;
+                    }
+                }
+            } else {
+                const key = raw.toString('utf8').trim();
+                if (key && key.length === 64) return key;
             }
         }
     } catch (error) {
         log.error('Erreur lors de la lecture de la clé:', error);
     }
-    
-    // Créer une nouvelle clé
+
     const key = crypto.randomBytes(32).toString('hex');
-    
+
     try {
-        // Créer le dossier userData s'il n'existe pas
         const userDataPath = app.getPath('userData');
-        if (!fs.existsSync(userDataPath)) {
-            fs.mkdirSync(userDataPath, { recursive: true });
+        await fs.mkdir(userDataPath, { recursive: true }).catch(() => {});
+
+        if (useSafeStorage) {
+            const encrypted = safeStorage.encryptString(key);
+            await fs.writeFile(keyFile, encrypted, { mode: 0o600 });
+            log.info('Nouvelle clé de chiffrement créée (safeStorage)');
+        } else {
+            await fs.writeFile(keyFile, key, { mode: 0o600 });
+            log.warn('safeStorage indisponible, clé stockée en texte brut');
         }
-        
-        // Sauvegarder la clé avec permissions restrictives
-        fs.writeFileSync(keyFile, key, { mode: 0o600 });
-        log.info('Nouvelle clé de chiffrement créée');
     } catch (error) {
         log.error('Erreur lors de la sauvegarde de la clé:', error);
     }
-    
+
     return key;
 }
 
@@ -199,11 +216,10 @@ function initializeStore() {
     };
 
     try {
-        // Tenter de créer le store avec chiffrement
         store = new Store({
-            encryptionKey: getOrCreateEncryptionKey().substring(0, 32),
+            encryptionKey: encryptionKey ? encryptionKey.substring(0, 32) : undefined,
             schema: storeSchema,
-            clearInvalidConfig: true // AJOUT: Nettoie automatiquement les configs invalides
+            clearInvalidConfig: true
         });
         
         // Vérifier que le store fonctionne
@@ -490,27 +506,28 @@ async function checkDiskSpace() {
     }
 }
 
-function cleanOldLogs() {
+async function cleanOldLogs() {
     const logsDir = path.join(app.getPath('userData'), 'logs');
-    if (!fs.existsSync(logsDir)) return;
-    
-    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 jours
+    const exists = await fs.access(logsDir).then(() => true).catch(() => false);
+    if (!exists) return;
+
+    const maxAge = 7 * 24 * 60 * 60 * 1000;
     const now = Date.now();
-    
+
     try {
-        const files = fs.readdirSync(logsDir);
-        files.forEach(file => {
+        const files = await fs.readdir(logsDir);
+        for (const file of files) {
             const filePath = path.join(logsDir, file);
             try {
-                const stats = fs.statSync(filePath);
+                const stats = await fs.stat(filePath);
                 if (now - stats.mtime.getTime() > maxAge) {
-                    fs.unlinkSync(filePath);
+                    await fs.unlink(filePath);
                     log.info('Ancien log supprimé:', file);
                 }
             } catch (err) {
                 log.warn('Erreur lors de la vérification du fichier:', err);
             }
-        });
+        }
     } catch (error) {
         log.warn('Erreur lors du nettoyage des logs:', error);
     }
@@ -521,6 +538,9 @@ function cleanOldLogs() {
 async function initializeApp() {
     try {
         log.info('Initialisation de l\'application...');
+        
+        // Initialize encryption key first (uses safeStorage after app.whenReady)
+        encryptionKey = await getOrCreateEncryptionKey();
         
         // Initialiser le store en premier
         const storeInitialized = initializeStore();
@@ -572,26 +592,19 @@ async function initializeDatabase() {
             
             const dbDir = path.join(app.getPath('userData'), 'database');
             const dbPath = path.join(dbDir, 'courses.db');
-            const encryptionKey = getOrCreateEncryptionKey();
             
-            // Créer le dossier de la DB s'il n'existe pas
-            if (!fs.existsSync(dbDir)) {
-                fs.mkdirSync(dbDir, { recursive: true });
-            }
+            await fs.mkdir(dbDir, { recursive: true }).catch(() => {});
             
-            // Vérifier si le fichier DB existe et est accessible
             let dbExists = false;
             try {
-                if (fs.existsSync(dbPath)) {
-                    fs.accessSync(dbPath, fs.constants.R_OK | fs.constants.W_OK);
-                    dbExists = true;
-                }
+                await fs.access(dbPath, fsSync.constants.R_OK | fsSync.constants.W_OK);
+                dbExists = true;
             } catch (accessError) {
-                log.warn('Fichier DB inaccessible, création d\'une nouvelle DB');
-                if (fs.existsSync(dbPath)) {
-                    // Backup de l'ancienne DB
+                const exists = await fs.access(dbPath).then(() => true).catch(() => false);
+                if (exists) {
+                    log.warn('Fichier DB inaccessible, création d\'une nouvelle DB');
                     const backupPath = dbPath + `.backup.${Date.now()}`;
-                    fs.renameSync(dbPath, backupPath);
+                    await fs.rename(dbPath, backupPath);
                     log.info(`Ancienne DB sauvegardée: ${backupPath}`);
                 }
             }
@@ -1284,12 +1297,16 @@ app.on('web-contents-created', (event, contents) => {
                 ...details.responseHeaders,
                 'Content-Security-Policy': [
                     "default-src 'self'; " +
-                    "script-src 'self' 'unsafe-inline'; " +
+                    "script-src 'self'; " +
                     "style-src 'self' 'unsafe-inline'; " +
-                    "img-src 'self' data: https:; " +
+                    "img-src 'self' data:; " +
                     "media-src 'self' file: http://127.0.0.1:*; " +
                     "font-src 'self' data:; " +
-                    "connect-src 'self' https: http://127.0.0.1:*"
+                    "connect-src 'self' http://127.0.0.1:*; " +
+                    "object-src 'none'; " +
+                    "base-uri 'self'; " +
+                    "form-action 'self'; " +
+                    "frame-ancestors 'none'"
                 ],
                 'X-Content-Type-Options': ['nosniff'],
                 'X-Frame-Options': ['DENY'],
