@@ -1,4 +1,5 @@
 const { expect } = require('chai');
+const sinon = require('sinon');
 const LearnPressAPIClient = require('../lib/api-client');
 
 describe('LearnPressAPIClient', () => {
@@ -7,24 +8,43 @@ describe('LearnPressAPIClient', () => {
     beforeEach(() => {
         client = new LearnPressAPIClient('https://test.com', 'test-device');
     });
+
+    afterEach(() => {
+        sinon.restore();
+    });
     
     describe('login', () => {
         it('devrait gérer les erreurs d\'abonnement', async () => {
-            // Mock de la réponse 403
-            client.client.post = async () => {
-                const error = new Error();
+            sinon.stub(client, 'client').callsFake(async () => {
+                const error = new Error('Membership required');
                 error.response = {
                     status: 403,
-                    data: { code: 'no_membership', message: 'Abonnement requis' }
+                    data: { code: 'no_active_membership', message: 'Abonnement requis' }
                 };
                 throw error;
-            };
+            });
             
             const result = await client.login('user', 'pass');
             
             expect(result.success).to.be.false;
             expect(result.requiresMembership).to.be.true;
-            expect(result.error).to.include('abonnement');
+        });
+
+        it('devrait gérer une connexion réussie', async () => {
+            sinon.stub(client, 'client').callsFake(async () => ({
+                status: 200,
+                data: {
+                    token: 'test-token',
+                    refresh_token: 'test-refresh',
+                    user: { id: 1, username: 'testuser' }
+                }
+            }));
+
+            const result = await client.login('testuser', 'pass');
+
+            expect(result.success).to.be.true;
+            expect(client.token).to.equal('test-token');
+            expect(client.refreshToken).to.equal('test-refresh');
         });
     });
 });

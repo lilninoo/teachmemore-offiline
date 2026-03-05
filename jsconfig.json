@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "es2015",
+    "lib": ["ES2021", "DOM"],
+    "checkJs": true,
+    "noEmit": true,
+    "strict": false,
+    "baseUrl": ".",
+    "paths": {}
+  },
+  "include": ["src/js/**/*.js"],
+  "exclude": ["node_modules", "**/*.old"]
+}
