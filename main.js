@@ -30,10 +30,17 @@ const context = {
 const LearnPressAPIClient = require('./lib/api-client');
 const SecureDatabase = require('./lib/database');
 const DownloadManager = require('./lib/download-manager');
-//const { SecureMediaPlayer } = require('./lib/secure-media-player');
-const { setupIpcHandlers } = require('./lib/ipc/index');
+const { setupIpcHandlers } = require('./lib/ipc-handlers');
 const errorHandler = require('./lib/error-handler');
 
+// Import des modules extraits
+const { getOrCreateEncryptionKey } = require('./lib/key-management');
+const { createSplashWindow, createMainWindow } = require('./lib/windows');
+const { createMenu } = require('./lib/menu');
+const { startMembershipCheck, stopMembershipCheck } = require('./lib/membership');
+const { startMaintenance, stopMaintenance } = require('./lib/maintenance');
+const { setupDeepLinking, handleDeepLink } = require('./lib/deep-linking');
+const { setupAutoUpdater } = require('./lib/auto-updater-setup');
 
 // Configuration du logging
 log.transports.file.level = 'info';
@@ -84,7 +91,6 @@ process.on('uncaughtException', async (error) => {
     log.error('Uncaught Exception:', error);
     console.error('Uncaught Exception:', error);
     
-    // Essayer de sauvegarder l'état
     if (database) {
         try {
             await database.close();
@@ -93,7 +99,6 @@ process.on('uncaughtException', async (error) => {
         }
     }
     
-    // Afficher un dialogue d'erreur si possible
     try {
         dialog.showErrorBox(
             'Erreur Critique',
@@ -103,7 +108,6 @@ process.on('uncaughtException', async (error) => {
         // Ignorer si impossible d'afficher le dialogue
     }
     
-    // Attendre un peu pour que les logs soient écrits
     setTimeout(() => {
         app.exit(1);
     }, 1000);
@@ -113,7 +117,6 @@ process.on('unhandledRejection', async (reason, promise) => {
     log.error('Unhandled Rejection at:', promise, 'reason:', reason);
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     
-    // Envoyer l'erreur au error handler
     if (errorHandler) {
         await errorHandler.handleError(reason, { type: 'unhandledRejection' });
     }
@@ -127,67 +130,10 @@ let apiClient = null;
 let database = null;
 let mediaPlayer = null;
 let downloadManager = null;
-let membershipCheckInterval = null;
-let maintenanceInterval = null;
 let isQuitting = false;
 
 const isDev = config.isDev;
 const deviceId = machineIdSync();
-
-// Générer ou récupérer une clé de chiffrement sécurisée
-// Uses Electron's safeStorage API for OS-level encryption (Keychain/DPAPI/libsecret)
-async function getOrCreateEncryptionKey() {
-    const keyFile = path.join(app.getPath('userData'), '.key');
-    const useSafeStorage = safeStorage.isEncryptionAvailable();
-
-    try {
-        const exists = await fs.access(keyFile).then(() => true).catch(() => false);
-        if (exists) {
-            const raw = await fs.readFile(keyFile);
-
-            if (useSafeStorage) {
-                try {
-                    const key = safeStorage.decryptString(raw);
-                    if (key && key.length === 64) return key;
-                } catch (decryptErr) {
-                    log.warn('safeStorage decrypt failed, trying plaintext fallback:', decryptErr.message);
-                    const plainKey = raw.toString('utf8').trim();
-                    if (plainKey && plainKey.length === 64) {
-                        log.info('Migrating plaintext key to safeStorage');
-                        const encrypted = safeStorage.encryptString(plainKey);
-                        await fs.writeFile(keyFile, encrypted, { mode: 0o600 });
-                        return plainKey;
-                    }
-                }
-            } else {
-                const key = raw.toString('utf8').trim();
-                if (key && key.length === 64) return key;
-            }
-        }
-    } catch (error) {
-        log.error('Erreur lors de la lecture de la clé:', error);
-    }
-
-    const key = crypto.randomBytes(32).toString('hex');
-
-    try {
-        const userDataPath = app.getPath('userData');
-        await fs.mkdir(userDataPath, { recursive: true }).catch(() => {});
-
-        if (useSafeStorage) {
-            const encrypted = safeStorage.encryptString(key);
-            await fs.writeFile(keyFile, encrypted, { mode: 0o600 });
-            log.info('Nouvelle clé de chiffrement créée (safeStorage)');
-        } else {
-            await fs.writeFile(keyFile, key, { mode: 0o600 });
-            log.warn('safeStorage indisponible, clé stockée en texte brut');
-        }
-    } catch (error) {
-        log.error('Erreur lors de la sauvegarde de la clé:', error);
-    }
-
-    return key;
-}
 
 // Store sécurisé pour les données sensibles
 let store;
@@ -222,7 +168,6 @@ function initializeStore() {
             clearInvalidConfig: true
         });
         
-        // Vérifier que le store fonctionne
         store.set('_test', 'test');
         if (store.get('_test') !== 'test') {
             throw new Error('Store verification failed');
@@ -235,7 +180,6 @@ function initializeStore() {
     } catch (error) {
         log.error('Erreur lors de l\'initialisation du store:', error);
         
-        // Essayer sans chiffrement
         try {
             store = new Store({
                 schema: storeSchema,
@@ -244,7 +188,6 @@ function initializeStore() {
             
             log.warn('Store initialisé sans chiffrement');
             
-            // Notifier l'utilisateur
             setTimeout(() => {
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send('store-warning', {
@@ -258,7 +201,6 @@ function initializeStore() {
         } catch (fallbackError) {
             log.error('Impossible de créer le store:', fallbackError);
             
-            // Créer un store minimal en mémoire avec méthodes complètes
             const memoryStore = {};
             store = {
                 data: memoryStore,
@@ -268,7 +210,7 @@ function initializeStore() {
                 },
                 set: function(key, value) {
                     this.data[key] = value;
-                    return this; // Pour le chaînage
+                    return this;
                 },
                 delete: function(key) {
                     delete this.data[key];
@@ -281,7 +223,6 @@ function initializeStore() {
                 has: function(key) {
                     return key in this.data;
                 },
-                // Ajouter les méthodes manquantes
                 getAll: function() {
                     return {...this.data};
                 },
@@ -296,269 +237,25 @@ function initializeStore() {
     }
 }
 
-// ==================== GESTION DES ABONNEMENTS ====================
-
-function startMembershipCheck() {
-    checkMembershipStatus();
-    
-    membershipCheckInterval = setInterval(async () => {
-        await checkMembershipStatus();
-    }, config.membership.checkInterval);
-}
-
-function stopMembershipCheck() {
-    if (membershipCheckInterval) {
-        clearInterval(membershipCheckInterval);
-        membershipCheckInterval = null;
-    }
-}
-
-async function checkMembershipStatus() {
-    if (!apiClient || !apiClient.token) return;
-    
-    try {
-        // NOUVEAU : Cache pour éviter les vérifications trop fréquentes
-        const lastCheck = store.get('lastMembershipCheck');
-        const now = Date.now();
-        
-        // Vérifier seulement toutes les 5 minutes
-        if (lastCheck && (now - lastCheck) < 300000) {
-            return;
-        }
-        
-        log.info('Vérification du statut d\'abonnement...');
-        const result = await apiClient.verifySubscription();
-        
-        // Sauvegarder le timestamp de la dernière vérification
-        store.set('lastMembershipCheck', now);
-        
-        // NOUVEAU : Gestion plus intelligente des erreurs
-        if (result.success === false) {
-            // Si c'est un problème de token, essayer de le rafraîchir
-            if (result.reason === 'unauthorized' || result.reason === 'refresh_token_expired') {
-                log.warn('Token invalide détecté, tentative de refresh...');
-                
-                try {
-                    const refreshResult = await apiClient.refreshAccessToken();
-                    if (refreshResult.success) {
-                        // Réessayer la vérification avec le nouveau token
-                        const retryResult = await apiClient.verifySubscription();
-                        if (retryResult.success && retryResult.isActive) {
-                            handleActiveMembership(retryResult);
-                            return;
-                        }
-                    }
-                } catch (refreshError) {
-                    log.error('Échec du refresh lors de la vérification membership:', refreshError);
-                }
-            }
-            
-            // Si c'est une erreur réseau, ne pas déconnecter
-            if (result.type === 'network_error') {
-                log.warn('Erreur réseau lors de la vérification, ignorée');
-                return;
-            }
-        }
-        
-        if (!result.success || !result.isActive) {
-            handleInactiveMembership(result);
-        } else {
-            handleActiveMembership(result);
-        }
-        
-    } catch (error) {
-        // NOUVEAU : En cas d'erreur, ne pas déconnecter l'utilisateur
-        log.error('Erreur lors de la vérification de l\'abonnement:', error);
-        
-        // Si c'est une erreur réseau, continuer normalement
-        if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT') {
-            log.info('Connexion impossible, mode hors ligne activé');
-            return;
-        }
-    }
-}
-
-function handleInactiveMembership(result) {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('membership-status-changed', {
-            isActive: false,
-            subscription: result.subscription
-        });
-    }
-    
-    applyMembershipRestrictions(result.subscription);
-}
-
-function handleActiveMembership(result) {
-    removeMembershipRestrictions();
-    
-    if (result.subscription?.expires_at) {
-        const expiresAt = new Date(result.subscription.expires_at);
-        const daysUntilExpiry = Math.floor((expiresAt - new Date()) / (1000 * 60 * 60 * 24));
-        
-        if (daysUntilExpiry <= config.membership.warningDays && daysUntilExpiry > 0) {
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('membership-expiring-soon', {
-                    daysLeft: daysUntilExpiry,
-                    expiresAt: result.subscription.expires_at
-                });
-            }
-        }
-    }
-}
-
-function applyMembershipRestrictions(subscription) {
-    const restrictions = {
-        canDownloadPremium: false,
-        canSync: false,
-        maxCourses: config.membership.freeTierLimits.maxCourses,
-        maxDownloadSize: config.membership.freeTierLimits.maxDownloadSize
-    };
-    
-    if (store && store.set) {
-        store.set('membershipRestrictions', restrictions);
-    }
-    
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('apply-restrictions', restrictions);
-    }
-}
-
-function removeMembershipRestrictions() {
-    if (store && store.delete) {
-        store.delete('membershipRestrictions');
-    }
-    
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('remove-restrictions');
-    }
-}
-
-// ==================== NETTOYAGE ET MAINTENANCE ====================
-
-function startMaintenance() {
-    // Exécuter immédiatement puis périodiquement
-    performMaintenance();
-    
-    maintenanceInterval = setInterval(async () => {
-        await performMaintenance();
-    }, config.storage.cleanupInterval);
-}
-
-function stopMaintenance() {
-    if (maintenanceInterval) {
-        clearInterval(maintenanceInterval);
-        maintenanceInterval = null;
-    }
-}
-
-async function performMaintenance() {
-    try {
-        log.info('Début de la maintenance périodique');
-        
-        // Nettoyer les données expirées
-        if (database && database.isInitialized) {
-            await database.cleanupExpiredData();
-            
-            const stats = database.getStats();
-            log.info('Stats DB:', stats);
-        }
-        
-        // Nettoyer les vieux logs
-        cleanOldLogs();
-        
-        // Vérifier l'espace disque
-        const diskSpace = await checkDiskSpace();
-        if (diskSpace.free < 1024 * 1024 * 1024) { // Moins de 1GB
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send('low-disk-space', {
-                    free: diskSpace.free,
-                    used: diskSpace.used
-                });
-            }
-        }
-        
-        log.info('Maintenance périodique terminée');
-    } catch (error) {
-        log.error('Erreur lors de la maintenance:', error);
-    }
-}
-
-async function checkDiskSpace() {
-    try {
-        // Utiliser require dynamique pour éviter les erreurs si le module n'existe pas
-        const checkDiskSpace = require('check-disk-space').default;
-        const userDataPath = app.getPath('userData');
-        const diskSpace = await checkDiskSpace(userDataPath);
-        
-        return {
-            free: diskSpace.free,
-            total: diskSpace.size,
-            used: diskSpace.size - diskSpace.free
-        };
-    } catch (error) {
-        // Retourner des valeurs par défaut si le module n'est pas disponible
-        return {
-            free: 10 * 1024 * 1024 * 1024, // 10GB
-            total: 100 * 1024 * 1024 * 1024, // 100GB
-            used: 90 * 1024 * 1024 * 1024 // 90GB
-        };
-    }
-}
-
-async function cleanOldLogs() {
-    const logsDir = path.join(app.getPath('userData'), 'logs');
-    const exists = await fs.access(logsDir).then(() => true).catch(() => false);
-    if (!exists) return;
-
-    const maxAge = 7 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-
-    try {
-        const files = await fs.readdir(logsDir);
-        for (const file of files) {
-            const filePath = path.join(logsDir, file);
-            try {
-                const stats = await fs.stat(filePath);
-                if (now - stats.mtime.getTime() > maxAge) {
-                    await fs.unlink(filePath);
-                    log.info('Ancien log supprimé:', file);
-                }
-            } catch (err) {
-                log.warn('Erreur lors de la vérification du fichier:', err);
-            }
-        }
-    } catch (error) {
-        log.warn('Erreur lors du nettoyage des logs:', error);
-    }
-}
-
 // ==================== INITIALISATION ====================
 
 async function initializeApp() {
     try {
         log.info('Initialisation de l\'application...');
         
-        // Initialize encryption key first (uses safeStorage after app.whenReady)
         encryptionKey = await getOrCreateEncryptionKey();
         
-        // Initialiser le store en premier
         const storeInitialized = initializeStore();
         if (!storeInitialized) {
             log.warn('Store non initialisé correctement, utilisation du mode dégradé');
         }
         
-        // Initialiser la base de données
         await initializeDatabase();
         
-        // Initialiser le lecteur média sécurisé
         await initializeMediaPlayer();
         
-        // Créer le gestionnaire de téléchargement
         await initializeDownloadManager();
         
-        // NOUVEAU CODE À AJOUTER ICI ↓↓↓
-        // Initialiser le gestionnaire de connexion
         connectionManager = new ConnectionManager(store.get('apiUrl'));
         connectionManager.onStatusChange((isOnline) => {
             log.info(`Statut de connexion changé: ${isOnline ? 'En ligne' : 'Hors ligne'}`);
@@ -569,10 +266,8 @@ async function initializeApp() {
         });
         connectionManager.startMonitoring();
         log.info('Gestionnaire de connexion initialisé');
-        // FIN DU NOUVEAU CODE ↑↑↑
         
-        // Démarrer la maintenance
-        startMaintenance();
+        startMaintenance({ app, getDatabase: () => database, getMainWindow: () => mainWindow, log, config });
         
         log.info('Application initialisée avec succès');
         
@@ -611,8 +306,7 @@ async function initializeDatabase() {
             
             database = new SecureDatabase(dbPath, encryptionKey);
             
-            // Attendre que la DB soit prête
-            let initTimeout = 5000; // 5 secondes
+            let initTimeout = 5000;
             const startTime = Date.now();
             
             while (!database.isInitialized && (Date.now() - startTime) < initTimeout) {
@@ -623,7 +317,6 @@ async function initializeDatabase() {
                 throw new Error('Timeout lors de l\'initialisation de la base de données');
             }
             
-            // Test de la DB
             const testResult = database.db.prepare('SELECT 1 as test').get();
             if (testResult.test !== 1) {
                 throw new Error('Test de la base de données échoué');
@@ -659,7 +352,6 @@ async function initializeMediaPlayer() {
     try {
         log.info('Initialisation du lecteur média sécurisé...');
         
-        // Utiliser la fonction du context qui gère déjà le singleton
         mediaPlayer = await context.getSecureMediaPlayer();
         
         log.info('Lecteur média initialisé avec succès');
@@ -680,349 +372,13 @@ async function initializeDownloadManager() {
         
         const encryption = require('./lib/encryption');
         
-        // Créer le DownloadManager sans apiClient pour l'instant
         downloadManager = new DownloadManager(database, encryption, null);
-        
-        // L'apiClient sera défini plus tard via setApiClient
         
         log.info('Gestionnaire de téléchargement initialisé');
         
     } catch (error) {
         log.error('Erreur lors de l\'initialisation du download manager:', error);
         downloadManager = null;
-    }
-}
-
-// ==================== CRÉATION DES FENÊTRES ====================
-
-function createSplashWindow() {
-    splashWindow = new BrowserWindow({
-        width: 600,
-        height: 400,
-        frame: false,
-        alwaysOnTop: true,
-        transparent: true,
-        resizable: false,
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true
-        }
-    });
-    
-    splashWindow.loadFile(path.join(__dirname, 'src/splash.html'));
-    
-    splashWindow.on('closed', () => {
-        splashWindow = null;
-    });
-}
-
-function createMainWindow() {
-    // Restaurer les dimensions de la fenêtre
-    const windowBounds = store ? store.get('windowBounds') : null;
-    
-    mainWindow = new BrowserWindow({
-        width: windowBounds?.width || config.window.width,
-        height: windowBounds?.height || config.window.height,
-        x: windowBounds?.x,
-        y: windowBounds?.y,
-        minWidth: config.window.minWidth,
-        minHeight: config.window.minHeight,
-        show: false,
-        icon: path.join(__dirname, 'assets/icons/icon.png'),
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
-            preload: path.join(__dirname, 'preload.js'),
-            webSecurity: !isDev,
-            // Permissions
-            allowRunningInsecureContent: false,
-            experimentalFeatures: false,
-            navigateOnDragDrop: false
-        },
-        titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default'
-    });
-    
-    mainWindow.loadFile(path.join(__dirname, 'src/index.html'));
-    
-    // Menu contextuel
-    contextMenu({
-        window: mainWindow,
-        showInspectElement: isDev,
-        showSearchWithGoogle: false,
-        showCopyImage: true,
-        prepend: () => []
-    });
-    
-    // Empêcher la navigation vers des URLs externes
-    mainWindow.webContents.on('will-navigate', (event, url) => {
-        if (!url.startsWith('file://')) {
-            event.preventDefault();
-            shell.openExternal(url);
-        }
-    });
-    
-    // Empêcher l'ouverture de nouvelles fenêtres
-    mainWindow.webContents.setWindowOpenHandler(() => {
-        return { action: 'deny' };
-    });
-    
-    // Gérer le certificat invalide en dev
-    if (isDev) {
-        mainWindow.webContents.on('certificate-error', (event, url, error, certificate, callback) => {
-            event.preventDefault();
-            callback(true);
-        });
-    }
-    
-    mainWindow.once('ready-to-show', () => {
-        if (splashWindow && !splashWindow.isDestroyed()) {
-            setTimeout(() => {
-                if (splashWindow && !splashWindow.isDestroyed()) {
-                    splashWindow.close();
-                }
-                mainWindow.show();
-                
-                // Vérifier si l'utilisateur est connecté
-                const token = store ? store.get('token') : null;
-                if (token) {
-                    mainWindow.webContents.send('auto-login-success');
-                }
-            }, 1500);
-        } else {
-            mainWindow.show();
-        }
-    });
-    
-    // Sauvegarder la position de la fenêtre
-    mainWindow.on('close', (event) => {
-        if (!isQuitting && process.platform === 'darwin') {
-            event.preventDefault();
-            mainWindow.hide();
-            return;
-        }
-        
-        if (!mainWindow.isDestroyed() && store && store.set) {
-            const bounds = mainWindow.getBounds();
-            store.set('windowBounds', bounds);
-        }
-    });
-    
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
-    
-    if (isDev) {
-        mainWindow.webContents.openDevTools();
-    }
-}
-
-function createMenu() {
-    const template = [
-        {
-            label: 'Fichier',
-            submenu: [
-                {
-                    label: 'Synchroniser',
-                    accelerator: 'CmdOrCtrl+S',
-                    click: () => {
-                        if (mainWindow) {
-                            mainWindow.webContents.send('sync-courses');
-                        }
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'Paramètres',
-                    accelerator: 'CmdOrCtrl+,',
-                    click: () => {
-                        if (mainWindow) {
-                            mainWindow.webContents.send('open-settings');
-                        }
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'Déconnexion',
-                    click: () => {
-                        if (mainWindow) {
-                            mainWindow.webContents.send('logout');
-                        }
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'Quitter',
-                    accelerator: process.platform === 'darwin' ? 'Cmd+Q' : 'Ctrl+Q',
-                    click: () => {
-                        app.quit();
-                    }
-                }
-            ]
-        },
-        {
-            label: 'Édition',
-            submenu: [
-                { role: 'undo', label: 'Annuler' },
-                { role: 'redo', label: 'Rétablir' },
-                { type: 'separator' },
-                { role: 'cut', label: 'Couper' },
-                { role: 'copy', label: 'Copier' },
-                { role: 'paste', label: 'Coller' },
-                { role: 'selectall', label: 'Tout sélectionner' }
-            ]
-        },
-        {
-            label: 'Affichage',
-            submenu: [
-                { role: 'reload', label: 'Recharger' },
-                { role: 'forcereload', label: 'Forcer le rechargement' },
-                { type: 'separator' },
-                { role: 'resetzoom', label: 'Réinitialiser le zoom' },
-                { role: 'zoomin', label: 'Zoom avant' },
-                { role: 'zoomout', label: 'Zoom arrière' },
-                { type: 'separator' },
-                { role: 'togglefullscreen', label: 'Plein écran' }
-            ]
-        },
-        {
-            label: 'Fenêtre',
-            submenu: [
-                { role: 'minimize', label: 'Réduire' },
-                { role: 'close', label: 'Fermer' }
-            ]
-        },
-        {
-            label: 'Aide',
-            submenu: [
-                {
-                    label: 'Documentation',
-                    click: () => {
-                        shell.openExternal('https://docs.votre-site.com');
-                    }
-                },
-                {
-                    label: 'Support',
-                    click: () => {
-                        shell.openExternal('https://support.votre-site.com');
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'Afficher les logs',
-                    click: () => {
-                        const logPath = log.transports.file.getFile().path;
-                        shell.showItemInFolder(logPath);
-                    }
-                },
-                { type: 'separator' },
-                {
-                    label: 'À propos',
-                    click: () => {
-                        if (mainWindow) {
-                            dialog.showMessageBox(mainWindow, {
-                                type: 'info',
-                                title: 'À propos',
-                                message: 'LearnPress Offline',
-                                detail: `Version: ${app.getVersion()}\nElectron: ${process.versions.electron}\nNode: ${process.versions.node}\nChrome: ${process.versions.chrome}`,
-                                buttons: ['OK']
-                            });
-                        }
-                    }
-                },
-                {
-                    label: 'Vérifier les mises à jour',
-                    click: () => {
-                        autoUpdater.checkForUpdatesAndNotify();
-                    }
-                }
-            ]
-        }
-    ];
-    
-    // Menu spécifique macOS
-    if (process.platform === 'darwin') {
-        template.unshift({
-            label: app.getName(),
-            submenu: [
-                { role: 'about', label: 'À propos de LearnPress Offline' },
-                { type: 'separator' },
-                {
-                    label: 'Préférences...',
-                    accelerator: 'Cmd+,',
-                    click: () => {
-                        if (mainWindow) {
-                            mainWindow.webContents.send('open-settings');
-                        }
-                    }
-                },
-                { type: 'separator' },
-                { role: 'services', label: 'Services', submenu: [] },
-                { type: 'separator' },
-                { role: 'hide', label: 'Masquer LearnPress Offline' },
-                { role: 'hideothers', label: 'Masquer les autres' },
-                { role: 'unhide', label: 'Tout afficher' },
-                { type: 'separator' },
-                { role: 'quit', label: 'Quitter LearnPress Offline' }
-            ]
-        });
-        
-        // Ajuster le menu Fenêtre pour macOS
-        const windowMenuIndex = template.findIndex(m => m.label === 'Fenêtre');
-        if (windowMenuIndex !== -1) {
-            template[windowMenuIndex].submenu = [
-                { role: 'minimize', label: 'Réduire' },
-                { role: 'zoom', label: 'Zoom' },
-                { type: 'separator' },
-                { role: 'front', label: 'Tout ramener au premier plan' }
-            ];
-        }
-    }
-    
-    const menu = Menu.buildFromTemplate(template);
-    Menu.setApplicationMenu(menu);
-}
-
-// ==================== DEEP LINKING ====================
-
-function setupDeepLinking() {
-    // Enregistrer le protocole
-    if (process.defaultApp) {
-        if (process.argv.length >= 2) {
-            app.setAsDefaultProtocolClient('learnpress', process.execPath, [path.resolve(process.argv[1])]);
-        }
-    } else {
-        app.setAsDefaultProtocolClient('learnpress');
-    }
-    
-    // Gérer les liens sur Windows
-    const deeplinkingUrl = process.argv.find((arg) => arg.startsWith('learnpress://'));
-    if (deeplinkingUrl) {
-        handleDeepLink(deeplinkingUrl);
-    }
-    
-    // Gérer les liens sur macOS
-    app.on('open-url', (event, url) => {
-        event.preventDefault();
-        handleDeepLink(url);
-    });
-}
-
-function handleDeepLink(url) {
-    log.info('Deep link reçu:', url);
-    
-    try {
-        const urlParts = url.replace('learnpress://', '').split('/');
-        const type = urlParts[0];
-        const id = urlParts[1];
-        
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send('deep-link', { type, id });
-            
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.focus();
-        }
-    } catch (error) {
-        log.error('Erreur lors du traitement du deep link:', error);
     }
 }
 
@@ -1037,28 +393,24 @@ if (!gotTheLock) {
     app.on('second-instance', (event, commandLine, workingDirectory) => {
         log.info('Tentative de lancer une seconde instance');
         
-        // Si une fenêtre existe, la mettre au premier plan
         if (mainWindow) {
             if (mainWindow.isMinimized()) mainWindow.restore();
             mainWindow.focus();
         }
         
-        // Gérer les deep links de la seconde instance
         const deeplinkingUrl = commandLine.find((arg) => arg.startsWith('learnpress://'));
         if (deeplinkingUrl) {
-            handleDeepLink(deeplinkingUrl);
+            handleDeepLink({ getMainWindow: () => mainWindow, log }, deeplinkingUrl);
         }
     });
 }
 
 // ==================== APP LIFECYCLE ====================
 
-// Désactiver l'accélération GPU si problèmes
 if (!isDev) {
     app.disableHardwareAcceleration();
 }
 
-// Mode développement
 if (isDev) {
     app.commandLine.appendSwitch('ignore-certificate-errors');
     app.commandLine.appendSwitch('allow-insecure-localhost', 'true');
@@ -1072,15 +424,29 @@ app.whenReady().then(async () => {
         log.info(`Node: ${process.versions.node}`);
         log.info(`Platform: ${process.platform} ${process.arch}`);
         
-        // Initialiser l'application
         await initializeApp();
         
-        // Créer les fenêtres
-        createSplashWindow();
-        createMainWindow();
-        createMenu();
+        splashWindow = createSplashWindow({
+            BrowserWindow,
+            path,
+            onCreated: (win) => { splashWindow = win; }
+        });
         
-        // Configurer les gestionnaires IPC
+        mainWindow = createMainWindow({
+            BrowserWindow,
+            path,
+            shell,
+            contextMenu,
+            store,
+            config,
+            isDev,
+            splashWindow,
+            isQuitting: () => isQuitting,
+            onCreated: (win) => { mainWindow = win; }
+        });
+        
+        createMenu({ Menu, shell, dialog, app, mainWindow, autoUpdater, log, isDev });
+        
         setupIpcHandlers(ipcMain, {
             store,
             deviceId,
@@ -1095,7 +461,7 @@ app.whenReady().then(async () => {
                     downloadManager.apiClient = client;
                 }
                 if (client && client.token) {
-                    startMembershipCheck();
+                    startMembershipCheck({ getApiClient: () => apiClient, store, getMainWindow: () => mainWindow, config, log });
                 } else {
                     stopMembershipCheck();
                 }
@@ -1106,14 +472,20 @@ app.whenReady().then(async () => {
             errorHandler,
             config,
             encryptionKey,
-            getSecureMediaPlayer: context.getSecureMediaPlayer // réutilise la fonction définie plus haut avec lazy init
+            getSecureMediaPlayer: context.getSecureMediaPlayer
         });
 
+        setupDeepLinking({ app, getMainWindow: () => mainWindow, log });
         
-        // Gérer le deep linking
-        setupDeepLinking();
+        setupAutoUpdater({
+            autoUpdater,
+            getMainWindow: () => mainWindow,
+            dialog,
+            log,
+            Notification,
+            setIsQuitting: (val) => { isQuitting = val; }
+        });
         
-        // Vérifier les mises à jour en production
         if (!isDev) {
             autoUpdater.checkForUpdatesAndNotify();
         }
@@ -1123,7 +495,6 @@ app.whenReady().then(async () => {
     } catch (error) {
         log.error('Erreur critique lors de l\'initialisation:', error);
         
-        // Afficher un dialogue d'erreur
         dialog.showErrorBox(
             'Erreur d\'initialisation',
             `L'application n'a pas pu démarrer correctement:\n\n${error.message}\n\nVeuillez consulter les logs pour plus de détails.`
@@ -1137,7 +508,6 @@ ipcMain.on('refresh-failed', async (event, data) => {
     log.warn('Échec du refresh token détecté');
     
     if (data.canRetry) {
-        // Proposer une reconnexion
         const choice = await dialog.showMessageBox(mainWindow, {
             type: 'question',
             title: 'Session expirée',
@@ -1148,12 +518,10 @@ ipcMain.on('refresh-failed', async (event, data) => {
         });
         
         if (choice.response === 0) {
-            // Tenter une reconnexion automatique
             if (mainWindow && !mainWindow.isDestroyed()) {
                 mainWindow.webContents.send('show-auto-reconnect');
             }
         } else {
-            // Déconnexion manuelle
             if (apiClient) {
                 apiClient.clearTokens();
             }
@@ -1173,7 +541,6 @@ app.on('before-quit', (event) => {
         event.preventDefault();
         isQuitting = true;
         
-        // Nettoyer avant de quitter
         cleanupBeforeQuit().then(() => {
             app.quit();
         });
@@ -1184,23 +551,19 @@ async function cleanupBeforeQuit() {
     log.info('Nettoyage avant fermeture...');
     
     try {
-        // Arrêter les intervals
         stopMembershipCheck();
         stopMaintenance();
         
-        // Fermer la base de données
         if (database && database.isInitialized) {
             await database.close();
             log.info('Base de données fermée');
         }
         
-        // Nettoyer le media player
         if (mediaPlayer) {
             await mediaPlayer.cleanup();
             log.info('Media player nettoyé');
         }
         
-        // Déconnecter l'API
         if (apiClient && apiClient.token) {
             try {
                 await apiClient.logout();
@@ -1223,74 +586,31 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow();
+        mainWindow = createMainWindow({
+            BrowserWindow,
+            path,
+            shell,
+            contextMenu,
+            store,
+            config,
+            isDev,
+            splashWindow,
+            isQuitting: () => isQuitting,
+            onCreated: (win) => { mainWindow = win; }
+        });
     } else if (mainWindow) {
         mainWindow.show();
-    }
-});
-
-// ==================== AUTO UPDATER ====================
-
-autoUpdater.on('checking-for-update', () => {
-    log.info('Vérification des mises à jour...');
-});
-
-autoUpdater.on('update-available', (info) => {
-    log.info('Mise à jour disponible:', info.version);
-    
-    if (mainWindow) {
-        const notification = new Notification({
-            title: 'Mise à jour disponible',
-            body: `Une nouvelle version (${info.version}) est disponible. Elle sera téléchargée en arrière-plan.`,
-            icon: path.join(__dirname, 'assets/icons/icon.png')
-        });
-        
-        notification.show();
-    }
-});
-
-autoUpdater.on('update-not-available', () => {
-    log.info('Aucune mise à jour disponible');
-});
-
-autoUpdater.on('error', (err) => {
-    log.error('Erreur lors de la mise à jour:', err);
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('update-progress', progressObj);
-    }
-});
-
-autoUpdater.on('update-downloaded', () => {
-    log.info('Mise à jour téléchargée');
-    
-    if (mainWindow) {
-        dialog.showMessageBox(mainWindow, {
-            type: 'info',
-            title: 'Mise à jour prête',
-            message: 'La mise à jour a été téléchargée. L\'application va redémarrer pour l\'installer.',
-            buttons: ['Redémarrer maintenant', 'Plus tard']
-        }).then((result) => {
-            if (result.response === 0) {
-                isQuitting = true;
-                autoUpdater.quitAndInstall();
-            }
-        });
     }
 });
 
 // ==================== SÉCURITÉ ====================
 
 app.on('web-contents-created', (event, contents) => {
-    // Empêcher l'ouverture de nouvelles fenêtres
     contents.on('new-window', (event, navigationUrl) => {
         event.preventDefault();
         shell.openExternal(navigationUrl);
     });
     
-    // Configurer les headers de sécurité
     contents.session.webRequest.onHeadersReceived((details, callback) => {
         callback({
             responseHeaders: {
@@ -1326,7 +646,3 @@ if (process.env.NODE_ENV === 'test') {
         initializeApp
     };
 }
-
-
-
-
