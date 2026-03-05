@@ -377,7 +377,7 @@ function setupLoginForm() {
                 
                 let errorMessage = result.error || 'Erreur de connexion';
                 
-                if (result.code === 'no_active_membership') {
+                if (result.code === 'no_active_membership' || result.code === 'no_membership') {
                     errorMessage = 'Un abonnement actif est requis pour utiliser l\'application';
                 } else if (result.status === 404) {
                     errorMessage = 'API non trouvée. Vérifiez l\'URL du site et que le plugin est activé';
