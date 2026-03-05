@@ -297,12 +297,12 @@ async function displayCourses(courses, container) {
         return;
     }
     
-    // IMPORTANT: Vérifier qu'on n'est pas déjà en train d'afficher
-    if (container.dataset.loading === 'true') {
-        console.warn('[Courses] Affichage déjà en cours, annulation');
-        return;
-    }
-    
+    console.log('[Courses] displayCourses appelée:', {
+        coursesCount: courses?.length,
+        containerId: container.id
+    });
+
+    // Reset loading flag to avoid deadlocks
     container.dataset.loading = 'true';
     
     try {
@@ -334,16 +334,16 @@ async function displayCourses(courses, container) {
         const endIndex = startIndex + CoursesState.coursesPerPage;
         const coursesToDisplay = filteredCourses.slice(startIndex, endIndex);
         
-        // Créer le conteneur
+        // Créer le conteneur avec un ID unique basé sur le container parent
+        const gridId = `courses-grid-${container.id || 'default'}`;
         container.innerHTML = `
-            <div class="courses-grid" id="courses-grid"></div>
+            <div class="courses-grid" id="${gridId}"></div>
             ${totalPages > 1 ? createPaginationHTML(totalPages) : ''}
         `;
         
-        // Afficher les cours
-        const grid = document.getElementById('courses-grid');
+        const grid = document.getElementById(gridId);
         if (!grid) {
-            console.error('[Courses] Grid non trouvé');
+            console.error('[Courses] Grid non trouvé:', gridId);
             return;
         }
         
@@ -417,8 +417,15 @@ async function loadCoursesPage() {
             return;
         }
 
-        // Mark all as downloaded and render
-        const courses = localCourses.map(c => ({ ...c, isDownloaded: true, isLocal: true }));
+        // Mark all as downloaded, decode thumbnail
+        const courses = localCourses.map(c => ({
+            ...c,
+            isDownloaded: true,
+            isLocal: true,
+            thumbnail: c.thumbnail || c.thumbnail_url || null
+        }));
+
+        console.log('[Courses] Cours téléchargés à afficher:', courses.length, courses.map(c => c.title));
         await displayCourses(courses, container);
 
     } catch (error) {
