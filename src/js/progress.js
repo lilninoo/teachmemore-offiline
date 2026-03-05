@@ -454,8 +454,20 @@
         }
     }
     
-    // Use shared utilities from utils.js (loaded first via script tag)
-    const { escapeHtml, formatDuration } = window.Utils || {};
+    // Use shared utilities from utils.js with safe fallbacks
+    const escapeHtml = (window.Utils && window.Utils.escapeHtml) || ((text) => {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    });
+    const formatDuration = (window.Utils && window.Utils.formatDuration) || ((seconds) => {
+        if (!seconds || isNaN(seconds)) return '0:00';
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = Math.floor(seconds % 60);
+        return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+    });
     
     function parseDuration(duration) {
         // Convertir une durée string en secondes

@@ -619,7 +619,7 @@ app.on('web-contents-created', (event, contents) => {
                     "default-src 'self'; " +
                     "script-src 'self'; " +
                     "style-src 'self' 'unsafe-inline'; " +
-                    "img-src 'self' data:; " +
+                    "img-src 'self' data: https:; " +
                     "media-src 'self' file: http://127.0.0.1:*; " +
                     "font-src 'self' data:; " +
                     "connect-src 'self' http://127.0.0.1:*; " +

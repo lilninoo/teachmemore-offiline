@@ -307,16 +307,24 @@ async function displayCourses(courses, container) {
             return;
         }
         
+        console.log('[Courses] Rendering', coursesToDisplay.length, 'courses into grid');
         for (const course of coursesToDisplay) {
-            const card = await createCourseCard(course);
-            if (typeof card === 'string') {
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = card;
-                grid.appendChild(tempDiv.firstElementChild);
-            } else {
-                grid.appendChild(card);
+            try {
+                const card = await createCourseCard(course);
+                if (typeof card === 'string') {
+                    const tempDiv = document.createElement('div');
+                    tempDiv.innerHTML = card;
+                    if (tempDiv.firstElementChild) {
+                        grid.appendChild(tempDiv.firstElementChild);
+                    }
+                } else if (card) {
+                    grid.appendChild(card);
+                }
+            } catch (cardError) {
+                console.error('[Courses] Error creating card for course', course.course_id || course.id, ':', cardError);
             }
         }
+        console.log('[Courses] Grid now has', grid.children.length, 'children');
         
     } finally {
         container.dataset.loading = 'false';
@@ -1161,7 +1169,7 @@ window.attachCourseEventListeners = function() {
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
             const courseId = btn.dataset.courseId;
-            if (window.openCoursePlayer) window.openCoursePlayer(courseId);
+            if (window.openCourse) window.openCourse(courseId);
         });
     });
     document.querySelectorAll('.download-course-btn').forEach(btn => {

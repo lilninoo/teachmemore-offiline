@@ -77,7 +77,7 @@ const AppState = {
 // Variables globales
 let currentLesson = null;
 let lessonProgress = 0;
-let courseLoadingInProgress = false; // Protection contre les appels multiples
+// courseLoadingInProgress is declared in auth.js (shared global scope)
 let dashboardUpdateInterval = null;
 
 // ==================== DÉTECTION DE CONNEXION ====================
@@ -1308,11 +1308,15 @@ function setupDownloadButton() {
     if (downloadBtn) {
         downloadBtn.addEventListener('click', () => {
             if (!ConnectionState.isOnline) {
-                showWarning('Le téléchargement nécessite une connexion Internet');
+                if (typeof showWarning === 'function') showWarning('Le téléchargement nécessite une connexion Internet');
                 return;
             }
             logger.info('Ouverture modal téléchargement');
-            showDownloadModal();
+            if (typeof window.showDownloadModal === 'function') {
+                window.showDownloadModal();
+            } else {
+                console.error('[App] showDownloadModal not available');
+            }
         });
     }
     
@@ -1320,10 +1324,14 @@ function setupDownloadButton() {
     if (downloadBtn2) {
         downloadBtn2.addEventListener('click', () => {
             if (!ConnectionState.isOnline) {
-                showWarning('Le téléchargement nécessite une connexion Internet');
+                if (typeof showWarning === 'function') showWarning('Le téléchargement nécessite une connexion Internet');
                 return;
             }
-            showDownloadModal();
+            if (typeof window.showDownloadModal === 'function') {
+                window.showDownloadModal();
+            } else {
+                console.error('[App] showDownloadModal not available');
+            }
         });
     }
     
@@ -1702,8 +1710,8 @@ function attachCourseEventListeners() {
             e.stopPropagation();
             const courseId = btn.dataset.courseId;
             AppLogger.log('Ouverture du cours:', courseId);
-            if (window.openCoursePlayer) {
-                window.openCoursePlayer(courseId);
+            if (window.openCourse) {
+                window.openCourse(courseId);
             }
         });
     });
@@ -1719,8 +1727,8 @@ function attachCourseEventListeners() {
             }
             
             AppLogger.log('Clic sur la carte du cours:', courseId);
-            if (window.openCoursePlayer) {
-                window.openCoursePlayer(courseId);
+            if (window.openCourse) {
+                window.openCourse(courseId);
             }
         });
     });

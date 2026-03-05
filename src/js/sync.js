@@ -875,7 +875,9 @@ async function updateSyncIndicators() {
 // ==================== FONCTIONS UTILITAIRES ====================
 
 // Use shared utilities from utils.js (loaded first via script tag)
-const { escapeHtml, formatFileSize: formatBytes, formatRelativeTime } = window.Utils || {};
+const escapeHtml = (window.Utils && window.Utils.escapeHtml) || ((t) => { if (!t) return ''; const d = document.createElement('div'); d.textContent = t; return d.innerHTML; });
+const formatBytes = (window.Utils && window.Utils.formatFileSize) || ((b) => { if (!b) return '0 B'; const s = ['B','KB','MB','GB']; const i = Math.floor(Math.log(b)/Math.log(1024)); return (b/Math.pow(1024,i)).toFixed(1)+' '+s[i]; });
+const formatRelativeTime = (window.Utils && window.Utils.formatRelativeTime) || ((date) => new Date(date).toLocaleDateString('fr-FR'));
 const showInfo = window.showInfo || ((msg) => console.info(msg));
 const showSuccess = window.showSuccess || ((msg) => console.log(msg));
 const showError = window.showError || ((msg) => console.error(msg));
