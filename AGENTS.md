@@ -44,7 +44,7 @@ xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" npx cross-env N
 
 ### Pre-existing test failures
 
-The test suite (as of this writing) has pre-existing failures: most tests try to reach `test.com` without proper mocking, and some assertions are incorrect. Only ~1 out of 11 tests pass. This is a codebase issue, not an environment issue.
+The test suite has 2 remaining pre-existing failures in the database tests (`getCourse` doesn't decrypt the thumbnail field, `updateLessonProgress` doesn't add to the sync queue). These are database-layer issues, not environment issues. All auth-related tests pass (14 passing).
 
 ### .env file
 
