@@ -23,7 +23,9 @@
     "wordpress"
   ],
   "scripts": {
+    "prestart": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true",
     "start": "electron .",
+    "predev": "electron-rebuild -f -w better-sqlite3 2>/dev/null || true",
     "dev": "cross-env NODE_ENV=development electron .",
     "dev:reload": "cross-env NODE_ENV=development nodemon --exec electron .",
     "test": "mocha tests/**/*.test.js --timeout 10000 --exit",
