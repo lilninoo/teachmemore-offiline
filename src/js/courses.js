@@ -16,8 +16,40 @@ console.log('[Courses] Module en cours de chargement...');
 // Image par défaut en base64 (un placeholder SVG avec une icône de livre)
 const DEFAULT_COURSE_IMAGE = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMwMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0xNTAgNjBDMTM1IDYwIDEyMCA2NSAxMjAgODBWMTAwQzEyMCAxMTUgMTM1IDEyMCAxNTAgMTIwQzE2NSAxMjAgMTgwIDExNSAxODAgMTAwVjgwQzE4MCA2NSAxNjUgNjAgMTUwIDYwWiIgZmlsbD0iIzY2NjY2NiIvPgo8cGF0aCBkPSJNMTMwIDkwSDE3MFY5NUgxMzBWOTBaIiBmaWxsPSIjOTk5OTk5Ii8+CjxwYXRoIGQ9Ik0xMzAgMTAwSDE3MFYxMDVIMTMwVjEwMFoiIGZpbGw9IiM5OTk5OTkiLz4KPHBhdGggZD0iTTE0NSA3MEgxNTVWMTE1SDE0NVY3MFoiIGZpbGw9IiM5OTk5OTkiLz4KPC9zdmc+';
 
-// Use shared utilities from utils.js (loaded first via script tag)
-const { escapeHtml, formatFileSize, formatDate, formatDuration, isCourseExpired, debounce } = window.Utils || {};
+// Use shared utilities from utils.js (loaded first via script tag) with safe fallbacks
+const escapeHtml = (window.Utils && window.Utils.escapeHtml) || ((text) => {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+});
+const formatFileSize = (window.Utils && window.Utils.formatFileSize) || ((bytes) => {
+    if (bytes === 0) return '0 B';
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+});
+const formatDate = (window.Utils && window.Utils.formatDate) || ((dateString) => {
+    return new Date(dateString).toLocaleDateString('fr-FR');
+});
+const formatDuration = (window.Utils && window.Utils.formatDuration) || ((seconds) => {
+    if (!seconds) return '0:00';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return h > 0 ? `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}` : `${m}:${String(s).padStart(2,'0')}`;
+});
+const isCourseExpired = (window.Utils && window.Utils.isCourseExpired) || ((course) => {
+    if (!course || !course.expires_at) return false;
+    return new Date(course.expires_at) < new Date();
+});
+const debounce = (window.Utils && window.Utils.debounce) || function(func, wait) {
+    let timeout;
+    return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func(...args), wait);
+    };
+};
 const showError = window.showError || ((msg) => console.error(msg));
 const showSuccess = window.showSuccess || ((msg) => console.log(msg));
 const showWarning = window.showWarning || ((msg) => console.warn(msg));
@@ -524,7 +556,7 @@ async function createCourseCard(course) {
             <img src="${thumbnailUrl}" 
                  alt="${escapeHtml(course.title)}" 
                  class="course-thumbnail"
-                 onerror="this.src='${DEFAULT_COURSE_IMAGE}'">
+                 data-fallback="${DEFAULT_COURSE_IMAGE}">
             ${isExpired ? '<div class="course-expired-badge">Expiré</div>' : ''}
             ${isDownloaded ? '<div class="course-downloaded-badge" title="Cours téléchargé">💾</div>' : ''}
         </div>
@@ -1086,7 +1118,7 @@ window.createCourseCard = function(course) {
                     alt="${escapeHtml(course.title)}" 
                     class="course-thumbnail"
                     loading="lazy"
-                    onerror="this.src='${DEFAULT_COURSE_IMAGE}'">
+                    data-fallback="${DEFAULT_COURSE_IMAGE}">
                 ${progress > 0 ? `
                 <div class="course-progress-overlay">
                     <div class="progress-circle">

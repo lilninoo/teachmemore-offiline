@@ -501,7 +501,7 @@ function createCourseCard(course, progress) {
             <img src="${escapeHtml(thumbnailUrl)}" 
                  alt="${escapeHtml(course.title)}" 
                  class="course-thumbnail"
-                 onerror="this.src='assets/default-course.jpg'">
+                 data-fallback="assets/default-course.jpg">
             ${isExpired ? '<div class="course-expired-badge">Expiré</div>' : ''}
         </div>
         <div class="course-info">
@@ -618,6 +618,14 @@ window.Utils = {
     getFileIcon,
     parseQueryParams
 };
+
+// Global image fallback handler (replaces inline onerror for CSP compliance)
+document.addEventListener('error', function(e) {
+    if (e.target.tagName === 'IMG' && e.target.dataset.fallback) {
+        e.target.src = e.target.dataset.fallback;
+        e.target.removeAttribute('data-fallback');
+    }
+}, true);
 
 // Raccourcis globaux
 window.log = Logger.log;

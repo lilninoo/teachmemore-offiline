@@ -1656,7 +1656,7 @@ function createCourseCard(course) {
     return `
         <div class="course-card card ${!canPlayOffline ? 'online-only' : ''}" data-course-id="${course.id || course.course_id}">
             <div class="course-thumbnail">
-                <img src="${thumbnail}" alt="${course.title}" onerror="this.src='assets/default-course.jpg'">
+                <img src="${thumbnail}" alt="${course.title}" data-fallback="assets/default-course.jpg">
                 ${progress > 0 ? `
                 <div class="course-progress-overlay">
                     <div class="progress-circle">
