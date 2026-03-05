@@ -9,8 +9,9 @@ window.loadPageContent = null;
 
 
 // ==================== LOGGING ====================
-// Use the Logger exposed by the preload script via contextBridge
-const AppLogger = {
+// Use var (not const) to avoid TDZ errors when hoisted functions are called
+// before this point during async IPC event handling
+var AppLogger = {
     log: (message, data = null) => {
         if (window.Logger && window.Logger.log) {
             window.Logger.log(message, data);
@@ -34,8 +35,7 @@ const AppLogger = {
     }
 };
 
-// logger alias for code that uses logger.info/error/warn/debug (maps to preload Logger)
-const logger = {
+var logger = {
     info: (message, data) => {
         if (window.Logger && window.Logger.log) {
             window.Logger.log(message, data);
@@ -67,7 +67,7 @@ const logger = {
 };
 
 // ==================== ÉTAT GLOBAL ====================
-const AppState = {
+var AppState = {
     currentCourse: null,
     currentLesson: null,
     isOnline: navigator.onLine,
@@ -83,7 +83,7 @@ let dashboardUpdateInterval = null;
 // ==================== DÉTECTION DE CONNEXION ====================
 
 
-const API_CONFIG = {
+var API_CONFIG = {
     // Utiliser l'URL de config.js si disponible, sinon fallback
     getApiUrl: function() {
         if (window.AppConfig && window.AppConfig.API_URL) {
@@ -97,7 +97,7 @@ const API_CONFIG = {
 
 
 // État de connexion
-const ConnectionState = {
+var ConnectionState = {
     isOnline: navigator.onLine,
     lastCheck: Date.now(),
     checkInterval: null,
