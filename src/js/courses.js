@@ -365,34 +365,64 @@ async function displayCourses(courses, container) {
 
 
 async function loadCoursesPage() {
-    console.log('[Courses] Chargement de la page des cours');
+    console.log('[Courses] Chargement de la page Mes cours (téléchargés uniquement)');
     const container = document.getElementById('courses-list');
     if (!container) return;
-    
-    // Afficher le loader
+
     container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Chargement...</p></div>';
-    
+
+    // Wire the "Télécharger un cours" button to navigate to Dashboard
+    const browseBtn = document.getElementById('browse-courses-btn');
+    if (browseBtn) {
+        browseBtn.onclick = () => {
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            const dashNav = document.querySelector('[data-page="dashboard"]');
+            if (dashNav) dashNav.classList.add('active');
+            if (window.showContentPage) window.showContentPage('dashboard');
+            if (window.loadPageContent) window.loadPageContent('dashboard');
+        };
+    }
+
     try {
-        // Utiliser les cours déjà en mémoire s'ils existent
-        let allCourses = [];
-        
-        // Si on a déjà des cours en mémoire, les utiliser
-        if (CoursesState.availableCourses.length > 0 || CoursesState.downloadedCourses.length > 0) {
-            allCourses = mergeCourseData(CoursesState.downloadedCourses, CoursesState.availableCourses);
-        } else {
-            // Sinon, charger depuis la base et l'API
-            const [localCourses, onlineCourses] = await Promise.all([
-                loadLocalCourses(),
-                loadOnlineCourses()
-            ]);
-            allCourses = mergeCourseData(localCourses, onlineCourses);
+        const localCourses = await loadLocalCourses();
+        CoursesState.downloadedCourses = localCourses;
+
+        // Update badge
+        const badge = document.getElementById('courses-count');
+        if (badge) badge.textContent = localCourses.length;
+
+        if (localCourses.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:60px 20px;">
+                    <svg width="80" height="80" viewBox="0 0 24 24" fill="var(--text-secondary)" style="margin-bottom:20px;opacity:0.4;">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    <h3 style="margin-bottom:10px;color:var(--text-secondary);">Aucun cours téléchargé</h3>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;">Téléchargez des cours depuis le tableau de bord pour y accéder hors ligne.</p>
+                    <button class="btn btn-primary" id="go-to-dashboard-btn">
+                        Explorer les cours disponibles
+                    </button>
+                </div>
+            `;
+            const goBtn = document.getElementById('go-to-dashboard-btn');
+            if (goBtn) {
+                goBtn.onclick = () => {
+                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                    const dashNav = document.querySelector('[data-page="dashboard"]');
+                    if (dashNav) dashNav.classList.add('active');
+                    if (window.showContentPage) window.showContentPage('dashboard');
+                    if (window.loadPageContent) window.loadPageContent('dashboard');
+                };
+            }
+            return;
         }
-        
-        // Afficher les cours
-        await displayCourses(allCourses, container);
-        
+
+        // Mark all as downloaded and render
+        const courses = localCourses.map(c => ({ ...c, isDownloaded: true, isLocal: true }));
+        await displayCourses(courses, container);
+
     } catch (error) {
-        console.error('[Courses] Erreur lors du chargement de la page des cours:', error);
+        console.error('[Courses] Erreur chargement Mes cours:', error);
         container.innerHTML = `
             <div class="message message-error">
                 <p>Erreur lors du chargement des cours</p>
@@ -1525,6 +1555,7 @@ window.downloadSingleCourse = downloadSingleCourse;
 window.deleteCourse = deleteCourse;
 window.updateCourse = updateCourse;
 window.openCourse = openCourse;
+window.openCoursePlayer = openCourse;
 window.loadCourses = loadCourses;
 window.displayCourses = displayCourses; // Ajouter cette ligne
 
@@ -1540,9 +1571,10 @@ window.initializeCourses = function() {
     console.log('[Courses] Initialisation du module courses');
     
     // S'assurer que les fonctions sont disponibles
-    if (!window.loadCoursesPage) {
-        window.loadCoursesPage = async function() {
-            console.log('[Courses] loadCoursesPage appelée depuis courses.js');
+    window.loadCoursesPage = loadCoursesPage;
+    if (false) {
+        window._loadCoursesPageFallback = async function() {
+            console.log('[Courses] loadCoursesPage fallback (désactivé)');
             const container = document.getElementById('courses-list');
             if (!container) {
                 console.error('[Courses] Container courses-list non trouvé');
