@@ -31,7 +31,7 @@ const LearnPressAPIClient = require('./lib/api-client');
 const SecureDatabase = require('./lib/database');
 const DownloadManager = require('./lib/download-manager');
 //const { SecureMediaPlayer } = require('./lib/secure-media-player');
-const { setupIpcHandlers } = require('./lib/ipc-handlers');
+const { setupIpcHandlers } = require('./lib/ipc/index');
 const errorHandler = require('./lib/error-handler');
 
 
