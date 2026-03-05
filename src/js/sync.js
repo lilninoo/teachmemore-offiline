@@ -874,49 +874,12 @@ async function updateSyncIndicators() {
 
 // ==================== FONCTIONS UTILITAIRES ====================
 
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
-
-function formatBytes(bytes) {
-    if (!bytes) return '0 B';
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-function formatRelativeTime(date) {
-    const now = new Date();
-    const diff = now - date;
-    const minutes = Math.floor(diff / 60000);
-    
-    if (minutes < 1) return 'À l\'instant';
-    if (minutes < 60) return `Il y a ${minutes} minute${minutes > 1 ? 's' : ''}`;
-    
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `Il y a ${hours} heure${hours > 1 ? 's' : ''}`;
-    
-    const days = Math.floor(hours / 24);
-    return `Il y a ${days} jour${days > 1 ? 's' : ''}`;
-}
-
-function showInfo(message) {
-    window.showInfo ? window.showInfo(message) : console.info(message);
-}
-
-function showSuccess(message) {
-    window.showSuccess ? window.showSuccess(message) : console.log(message);
-}
-
-function showError(message) {
-    window.showError ? window.showError(message) : console.error(message);
-}
-
-function showWarning(message) {
-    window.showWarning ? window.showWarning(message) : console.warn(message);
-}
+// Use shared utilities from utils.js (loaded first via script tag)
+const { escapeHtml, formatFileSize: formatBytes, formatRelativeTime } = window.Utils || {};
+const showInfo = window.showInfo || ((msg) => console.info(msg));
+const showSuccess = window.showSuccess || ((msg) => console.log(msg));
+const showError = window.showError || ((msg) => console.error(msg));
+const showWarning = window.showWarning || ((msg) => console.warn(msg));
 
 // ==================== FONCTIONS GLOBALES ====================
 

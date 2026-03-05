@@ -454,18 +454,12 @@ document.head.insertAdjacentHTML('beforeend', errorNotificationStyles);
 // Créer l'instance globale
 window.Logger = new RendererLogger();
 
-// Créer des alias pour faciliter l'utilisation
-// Créer des alias pour faciliter l'utilisation
 if (window.Logger) {
-    window.log = window.Logger.info ? window.Logger.info.bind(window.Logger) : console.log;
-    window.logError = window.Logger.error ? window.Logger.error.bind(window.Logger) : console.error;
-    window.logWarn = window.Logger.warn ? window.Logger.warn.bind(window.Logger) : console.warn;
-    window.logDebug = window.Logger.debug ? window.Logger.debug.bind(window.Logger) : console.debug;
+    window.log = window.Logger.info.bind(window.Logger);
+    window.logError = window.Logger.error.bind(window.Logger);
+    window.logWarn = window.Logger.warn.bind(window.Logger);
+    window.logDebug = window.Logger.debug.bind(window.Logger);
 }
-
-window.logError = window.Logger.error.bind(window.Logger);
-window.logWarn = window.Logger.warn.bind(window.Logger);
-window.logDebug = window.Logger.debug.bind(window.Logger);
 
 // Export pour les modules
 if (typeof module !== 'undefined' && module.exports) {

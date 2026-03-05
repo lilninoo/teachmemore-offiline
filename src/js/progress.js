@@ -454,23 +454,8 @@
         }
     }
     
-    // Utilitaires
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    function formatDuration(seconds) {
-        if (!seconds) return '0h';
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-        if (hours > 0) {
-            return `${hours}h ${minutes}m`;
-        }
-        return `${minutes}m`;
-    }
+    // Use shared utilities from utils.js (loaded first via script tag)
+    const { escapeHtml, formatDuration } = window.Utils || {};
     
     function parseDuration(duration) {
         // Convertir une durée string en secondes

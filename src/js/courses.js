@@ -16,89 +16,14 @@ console.log('[Courses] Module en cours de chargement...');
 // Image par défaut en base64 (un placeholder SVG avec une icône de livre)
 const DEFAULT_COURSE_IMAGE = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjE4MCIgdmlld0JveD0iMCAwIDMwMCAxODAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIzMDAiIGhlaWdodD0iMTgwIiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0xNTAgNjBDMTM1IDYwIDEyMCA2NSAxMjAgODBWMTAwQzEyMCAxMTUgMTM1IDEyMCAxNTAgMTIwQzE2NSAxMjAgMTgwIDExNSAxODAgMTAwVjgwQzE4MCA2NSAxNjUgNjAgMTUwIDYwWiIgZmlsbD0iIzY2NjY2NiIvPgo8cGF0aCBkPSJNMTMwIDkwSDE3MFY5NUgxMzBWOTBaIiBmaWxsPSIjOTk5OTk5Ii8+CjxwYXRoIGQ9Ik0xMzAgMTAwSDE3MFYxMDVIMTMwVjEwMFoiIGZpbGw9IiM5OTk5OTkiLz4KPHBhdGggZD0iTTE0NSA3MEgxNTVWMTE1SDE0NVY3MFoiIGZpbGw9IiM5OTk5OTkiLz4KPC9zdmc+';
 
-// Utiliser directement les fonctions de utils.js sans les redéclarer
-const escapeHtml = window.Utils?.escapeHtml || ((text) => {
-    if (!text) return '';
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-});
-
-const formatFileSize = window.Utils?.formatFileSize || ((bytes) => {
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    if (bytes === 0) return '0 B';
-    const i = Math.floor(Math.log(bytes) / Math.log(1024));
-    return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-});
-
-const formatDate = window.Utils?.formatDate || ((dateString, format) => {
-    const date = new Date(dateString);
-    if (format === 'long') {
-        return date.toLocaleDateString('fr-FR', {
-            weekday: 'long',
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-        });
-    }
-    return date.toLocaleDateString('fr-FR');
-});
-
-const formatDuration = window.Utils?.formatDuration || ((seconds) => {
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = Math.floor(seconds % 60);
-    if (hours > 0) {
-        return `${hours}h ${minutes}m ${secs}s`;
-    }
-    return `${minutes}m ${secs}s`;
-});
-
-const isCourseExpired = window.Utils?.isCourseExpired || ((course) => {
-    if (!course.expires_at) return false;
-    return new Date(course.expires_at) < new Date();
-});
-
-const debounce = window.Utils?.debounce || function(func, wait) {
-    let timeout;
-    return function executedFunction(...args) {
-        const later = () => {
-            clearTimeout(timeout);
-            func(...args);
-        };
-        clearTimeout(timeout);
-        timeout = setTimeout(later, wait);
-    };
-};
-
-// Fonctions de notification - utiliser celles globales si disponibles
-const showError = window.showError || ((message) => {
-    console.error('Erreur:', message);
-    alert(message);
-});
-
-const showSuccess = window.showSuccess || ((message) => {
-    console.log('Succès:', message);
-    alert(message);
-});
-
-const showWarning = window.showWarning || ((message) => {
-    console.warn('Avertissement:', message);
-    alert(message);
-});
-
-const showInfo = window.showInfo || ((message) => {
-    console.info('Info:', message);
-    alert(message);
-});
-
-const showLoader = window.showLoader || ((message) => {
-    console.log('Chargement:', message);
-});
-
-const hideLoader = window.hideLoader || (() => {
-    console.log('Fin du chargement');
-});
+// Use shared utilities from utils.js (loaded first via script tag)
+const { escapeHtml, formatFileSize, formatDate, formatDuration, isCourseExpired, debounce } = window.Utils || {};
+const showError = window.showError || ((msg) => console.error(msg));
+const showSuccess = window.showSuccess || ((msg) => console.log(msg));
+const showWarning = window.showWarning || ((msg) => console.warn(msg));
+const showInfo = window.showInfo || ((msg) => console.info(msg));
+const showLoader = window.showLoader || ((msg) => console.log(msg));
+const hideLoader = window.hideLoader || (() => {});
 
 // État local du module
 const CoursesState = {

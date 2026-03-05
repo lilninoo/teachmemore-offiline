@@ -390,42 +390,11 @@
         if (currentFileEl && data.currentFile) currentFileEl.textContent = data.currentFile;
     }
     
-    // Utilitaires (si non disponibles globalement)
-    function escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    }
-    
-    function formatBytes(bytes) {
-        if (!bytes) return '0 B';
-        const sizes = ['B', 'KB', 'MB', 'GB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
-    }
-    
-    function formatDuration(seconds) {
-        if (!seconds) return '0s';
-        const h = Math.floor(seconds / 3600);
-        const m = Math.floor((seconds % 3600) / 60);
-        const s = Math.floor(seconds % 60);
-        if (h > 0) return `${h}h ${m}m`;
-        if (m > 0) return `${m}m ${s}s`;
-        return `${s}s`;
-    }
-    
-    function showInfo(message) {
-        window.showInfo ? window.showInfo(message) : console.info(message);
-    }
-    
-    function showSuccess(message) {
-        window.showSuccess ? window.showSuccess(message) : console.log(message);
-    }
-    
-    function showError(message) {
-        window.showError ? window.showError(message) : console.error(message);
-    }
+    // Use shared utilities from utils.js (loaded first via script tag)
+    const { escapeHtml, formatFileSize: formatBytes, formatDuration } = window.Utils || {};
+    const showInfo = window.showInfo || ((msg) => console.info(msg));
+    const showSuccess = window.showSuccess || ((msg) => console.log(msg));
+    const showError = window.showError || ((msg) => console.error(msg));
     
     // Nettoyer quand on quitte la page
     window.addEventListener('beforeunload', () => {
