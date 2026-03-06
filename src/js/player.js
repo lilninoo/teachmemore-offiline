@@ -776,7 +776,13 @@ loadSubtitles(subtitlePath) {
                         <span class="separator">›</span>
                         <span id="player-lesson-name">Leçon</span>
                     </div>
+                    <div id="course-progress" class="course-progress-header">0% complété</div>
                     <div class="player-header-actions">
+                        <button class="btn-icon" onclick="playerManager.markCurrentLessonComplete()" title="Marquer comme terminé" id="mark-complete-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                        </button>
                         <button class="btn-icon" onclick="playerManager.toggleTheaterMode()" title="Mode cinéma">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 6H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H5V8h14v8z"/>
@@ -1196,10 +1202,36 @@ loadSubtitles(subtitlePath) {
             });
         });
         
+        // Volume button (mute toggle)
+        const volumeBtn = document.getElementById('volume-btn');
+        volumeBtn?.addEventListener('click', () => this.toggleMute());
+
+        // Seek indicators
+        document.getElementById('seek-backward')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.skipBackward();
+        });
+        document.getElementById('seek-forward')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.skipForward();
+        });
+
         // Quality menu
         const qualityBtn = document.getElementById('quality-btn');
         qualityBtn?.addEventListener('click', () => this.toggleQualityMenu());
-        
+
+        const qualityMenu = document.getElementById('quality-menu');
+        qualityMenu?.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const quality = e.target.dataset.quality;
+                qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                const qualityText = document.getElementById('quality-text');
+                if (qualityText) qualityText.textContent = quality === 'auto' ? 'Auto' : quality;
+                this.toggleQualityMenu();
+            });
+        });
+
         // Content tabs
         document.querySelectorAll('.content-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
@@ -2702,6 +2734,8 @@ async downloadCertificate() {
    
    // Charger la leçon précédente
    async loadPreviousLesson() {
+       await this.saveProgress();
+
        const allLessons = [];
        PlayerState.sections.forEach(section => {
            const lessons = PlayerState.lessons.get(section.section_id) || [];
@@ -3107,27 +3141,22 @@ async downloadCertificate() {
        if (!PlayerState.currentLesson) return;
        
        try {
-           const progress = {
-               lesson_id: PlayerState.currentLesson.lesson_id,
-               course_id: PlayerState.currentCourse.course_id,
-               last_position: PlayerState.currentTime,
-               watched_segments: PlayerState.watchedSegments,
-               updated_at: new Date().toISOString()
-           };
-           
-           if (window.electronAPI.db.updateLessonProgress) {
-               await window.electronAPI.db.updateLessonProgress(progress);
+           const lessonId = PlayerState.currentLesson.lesson_id;
+           const duration = PlayerState.duration || 1;
+           const currentTime = PlayerState.currentTime || 0;
+           const progressPercent = Math.min(Math.round((currentTime / duration) * 100), 100);
+           const isCompleted = progressPercent >= 90;
+
+           await window.electronAPI.db.updateLessonProgress(lessonId, progressPercent, isCompleted);
+
+           if (isCompleted && !PlayerState.currentLesson.completed) {
+               PlayerState.currentLesson.completed = true;
+               this.buildNavigation();
+               if (PlayerState.lessons) {
+                   const completed = PlayerState.lessons.filter(l => l.completed).length;
+                   this.updateCourseProgress(completed, PlayerState.lessons.length);
+               }
            }
-           
-           // Mettre à jour la progression du cours
-           if (window.electronAPI.db.updateCourseProgress) {
-               await window.electronAPI.db.updateCourseProgress({
-                   course_id: PlayerState.currentCourse.course_id,
-                   last_lesson_id: PlayerState.currentLesson.lesson_id,
-                   last_accessed: new Date().toISOString()
-               });
-           }
-           
        } catch (error) {
            console.error('[Player] Erreur lors de la sauvegarde de la progression:', error);
        }
@@ -3146,22 +3175,37 @@ async downloadCertificate() {
        }
    },
    
+   // Marquer la leçon courante comme complétée (bouton UI)
+   async markCurrentLessonComplete() {
+       if (!PlayerState.currentLesson) return;
+       await this.markLessonAsCompleted();
+   },
+
    // Marquer la leçon comme complétée
    async markLessonAsCompleted() {
-       if (PlayerState.currentLesson.completed) return;
+       if (!PlayerState.currentLesson || PlayerState.currentLesson.completed) return;
        
        try {
-           if (window.electronAPI.db.markLessonAsCompleted) {
-               await window.electronAPI.db.markLessonAsCompleted(PlayerState.currentLesson.lesson_id);
-           }
+           const lessonId = PlayerState.currentLesson.lesson_id;
+           await window.electronAPI.db.updateLessonProgress(lessonId, 100, true);
            
            PlayerState.currentLesson.completed = true;
+           
+           // Mettre à jour l'icône du bouton
+           const btn = document.getElementById('mark-complete-btn');
+           if (btn) btn.style.color = '#4CAF50';
            
            // Mettre à jour la navigation
            this.buildNavigation();
            
+           // Calculer et afficher la progression globale
+           if (PlayerState.lessons) {
+               const completed = PlayerState.lessons.filter(l => l.completed).length;
+               this.updateCourseProgress(completed, PlayerState.lessons.length);
+           }
+           
            // Afficher une notification
-           showSuccess('Leçon complétée !');
+           if (typeof showSuccess === 'function') showSuccess('Leçon complétée !');
            
            // Analytics
            this.trackEvent('lesson_completed', {
