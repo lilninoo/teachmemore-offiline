@@ -39,6 +39,7 @@
   --transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
 /* Mode sombre */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -163,6 +164,9 @@ a:hover {
     z-index: 90;
 }
 
+.form-group:has(#api-url) {
+  display: none;
+}
 
 .login-container {
   display: flex;
