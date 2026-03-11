@@ -1103,7 +1103,9 @@ app.whenReady().then(async () => {
         
         // Vérifier les mises à jour en production
         if (!isDev) {
-            autoUpdater.checkForUpdatesAndNotify();
+            autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+                log.warn('Auto-update check failed (non-critical):', err.message || err);
+            });
         }
         
         log.info('Application initialisée avec succès');
