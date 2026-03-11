@@ -29,7 +29,7 @@
     <!-- Stockage de l'app -->
     <key>com.apple.security.application-groups</key>
     <array>
-        <string>group.com.yourcompany.learnpress-offline</string>
+        <string>group.com.teachmemore.learnpress-offline</string>
     </array>
     
     <!-- Camera et microphone (si nécessaire pour les quiz vidéo) -->
@@ -46,7 +46,7 @@
     <!-- Keychain access pour stocker les tokens de manière sécurisée -->
     <key>keychain-access-groups</key>
     <array>
-        <string>$(AppIdentifierPrefix)com.yourcompany.learnpress-offline</string>
+        <string>$(AppIdentifierPrefix)com.teachmemore.learnpress-offline</string>
     </array>
 </dict>
 </plist>

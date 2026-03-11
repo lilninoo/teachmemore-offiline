@@ -139,6 +139,8 @@
         "to": "database/schema.sql"
       }
     ],
+    "afterSign": "scripts/notarize.js",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.education",
       "icon": "build/icon.icns",
@@ -163,7 +165,8 @@
         }
       ],
       "type": "distribution",
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
     "dmg": {
       "contents": [
@@ -178,6 +181,10 @@
           "path": "/Applications"
         }
       ],
+      "window": {
+        "width": 540,
+        "height": 380
+      },
       "title": "${productName} ${version}",
       "background": "build/background.png",
       "icon": "build/icon.icns"
@@ -192,14 +199,17 @@
           ]
         },
         {
-          "target": "portable"
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",
       "publisherName": "Armel NGANDO",
-      "requestedExecutionLevel": "requireAdministrator",
-      "signAndEditExecutable": false,
-      "signDlls": false
+      "requestedExecutionLevel": "asInvoker",
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -209,10 +219,13 @@
       "differentialPackage": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "shortcutName": "LearnPress Offline",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerLanguages": ["fr_FR", "en_US"],
       "license": "LICENSE.md",
-      "warningsAsErrors": false
+      "warningsAsErrors": false,
+      "artifactName": "${productName}-Setup-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -223,10 +236,16 @@
           ]
         },
         {
-          "target": "deb"
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
         },
         {
-          "target": "rpm"
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icons/",
@@ -237,9 +256,13 @@
         "StartupNotify": "true",
         "Encoding": "UTF-8",
         "MimeType": "x-scheme-handler/learnpress"
-      }
+      },
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     },
-  
+    "appImage": {
+      "license": "LICENSE.md",
+      "artifactName": "${productName}-${version}-linux-${arch}.AppImage"
+    },
     "protocols": [
       {
         "name": "LearnPress Protocol",
