@@ -164,7 +164,7 @@ a:hover {
     z-index: 90;
 }
 
-.form-group:has(#api-url) {
+.form-group:has(#api-url).hidden {
   display: none;
 }
 

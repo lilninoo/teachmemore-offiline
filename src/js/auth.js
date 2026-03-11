@@ -229,8 +229,16 @@ async function restoreLoginForm() {
         const usernameInput = document.getElementById('username');
         const rememberCheckbox = document.getElementById('remember-me');
         
+        // Gérer la visibilité du champ URL
+        const apiUrlGroup = apiUrlInput ? apiUrlInput.closest('.form-group') : null;
+        
         if (savedApiUrl && apiUrlInput) {
             apiUrlInput.value = savedApiUrl;
+            // Cacher le champ URL si une valeur est déjà sauvegardée
+            if (apiUrlGroup) apiUrlGroup.classList.add('hidden');
+        } else if (apiUrlGroup) {
+            // Montrer le champ URL s'il n'y a pas de valeur sauvegardée
+            apiUrlGroup.classList.remove('hidden');
         }
         
         if (savedUsername && usernameInput) {
