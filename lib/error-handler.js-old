@@ -36,8 +36,7 @@ class ErrorHandler {
                     INVALID_CREDENTIALS: 'Identifiants incorrects',
                     TOKEN_EXPIRED: 'Votre session a expiré',
                     NO_MEMBERSHIP: 'Abonnement requis pour accéder à cette fonctionnalité',
-                    MEMBERSHIP_EXPIRED: 'Votre abonnement a expiré',
-                    GENERIC: 'Erreur d\'authentification. Veuillez vous reconnecter.'
+                    MEMBERSHIP_EXPIRED: 'Votre abonnement a expiré'
                 },
                 NETWORK_ERROR: {
                     NO_INTERNET: 'Aucune connexion Internet détectée',
@@ -115,15 +114,6 @@ class ErrorHandler {
         
         // Déterminer le type d'erreur
         const errorType = this.determineErrorType(error);
-
-        // Ne pas afficher de dialogue bloquant pour les erreurs
-        // non-critiques venant du renderer ou des rejections non gérées
-        const silentSources = ['renderer', 'unhandledRejection'];
-        const silentTypes = ['UNKNOWN_ERROR', 'UPDATE_ERROR', 'SYNC_ERROR'];
-        if (silentSources.includes(context.source || context.type) && silentTypes.includes(errorType)) {
-            log.warn(`Erreur silencieuse (${errorType}):`, error.message || error);
-            return { handled: true, silent: true };
-        }
         
         // Appeler le gestionnaire spécifique
         if (this.errorTypes[errorType]) {
@@ -136,37 +126,31 @@ class ErrorHandler {
     
     // Déterminer le type d'erreur
     determineErrorType(error) {
-        const code = error.code || '';
-        const msg = (error.message || '').toLowerCase();
-
-        if (code === 'AUTH_ERROR' || code === 'INVALID_CREDENTIALS' ||
-            code === 'TOKEN_EXPIRED' || code === 'NO_MEMBERSHIP' ||
-            code === 'MEMBERSHIP_EXPIRED') {
+        if (error.code === 'AUTH_ERROR' || error.message?.includes('auth')) {
             return 'AUTH_ERROR';
         }
-        if (code === 'ENOTFOUND' || code === 'ETIMEDOUT' || code === 'ERR_NETWORK' ||
-            msg.includes('network') || msg.includes('connexion réseau')) {
+        if (error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT' || error.message?.includes('network')) {
             return 'NETWORK_ERROR';
         }
-        if (code === 'SQLITE_ERROR' || msg.includes('database') || msg.includes('base de données')) {
+        if (error.code === 'SQLITE_ERROR' || error.message?.includes('database')) {
             return 'DATABASE_ERROR';
         }
-        if (code === 'ENOSPC' || code === 'EACCES' || msg.includes('storage') || msg.includes('espace')) {
+        if (error.code === 'ENOSPC' || error.code === 'EACCES' || error.message?.includes('storage')) {
             return 'STORAGE_ERROR';
         }
-        if (code === 'NO_MEMBERSHIP' || code === 'MEMBERSHIP_ERROR' || msg === 'membership') {
+        if (error.code === 'NO_MEMBERSHIP' || error.message?.includes('membership')) {
             return 'MEMBERSHIP_ERROR';
         }
-        if (code === 'SYNC_ERROR' || msg === 'sync') {
+        if (error.message?.includes('sync')) {
             return 'SYNC_ERROR';
         }
-        if (code === 'DOWNLOAD_ERROR' || msg === 'download') {
+        if (error.message?.includes('download')) {
             return 'DOWNLOAD_ERROR';
         }
-        if (msg.includes('encrypt') || msg.includes('decrypt') || msg.includes('chiffr')) {
+        if (error.message?.includes('encrypt') || error.message?.includes('decrypt')) {
             return 'ENCRYPTION_ERROR';
         }
-        if (code === 'UPDATE_ERROR') {
+        if (error.message?.includes('update')) {
             return 'UPDATE_ERROR';
         }
         
