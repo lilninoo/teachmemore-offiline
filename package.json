@@ -38,6 +38,7 @@
     "build:linux": "electron-builder --linux",
     "postinstall": "electron-builder install-app-deps && npm run rebuild-sqlite3",
     "rebuild-sqlite3": "electron-rebuild -f -w better-sqlite3",
+    "prebuild": "npm run generate-icons",
     "dev-utils": "node scripts/dev-utils.js",
     "clean": "npm run dev-utils clean",
     "generate-key": "npm run dev-utils generate-key",
@@ -55,7 +56,7 @@
     "logs": "tail -f ~/.config/learnpress-offline/logs/*.log",
     "logs:win": "powershell Get-Content $env:APPDATA/learnpress-offline/logs/*.log -Wait",
     "reset-deps": "rimraf node_modules package-lock.json && npm install",
-    "rebuild-native": "npx electron-rebuild --force --parallel",
+    "rebuild-native": "npx @electron/rebuild --force --parallel",
     "generate-icons": "node scripts/generate-icons.js"
   },
   "engines": {
@@ -69,7 +70,7 @@
     "electron": "^27.3.11",
     "electron-builder": "^24.6.4",
     "electron-devtools-installer": "^3.2.0",
-    "electron-rebuild": "^3.2.9",
+    "@electron/rebuild": "^3.6.0",
     "electron-reload": "^2.0.0-alpha.1",
     "eslint": "^8.50.0",
     "jsdom": "^23.0.0",
@@ -200,7 +201,7 @@
       ],
       "icon": "build/icon.ico",
       "publisherName": "Armel NGANDO",
-      "requestedExecutionLevel": "requireAdministrator",
+      "requestedExecutionLevel": "asInvoker",
       "signAndEditExecutable": false,
       "signDlls": false
     },
@@ -243,7 +244,7 @@
       }
     },
     "appImage": {
-      "systemIntegration": "ask"
+      "license": "LICENSE.md"
     },
     "protocols": [
       {
