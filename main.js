@@ -113,10 +113,11 @@ process.on('uncaughtException', async (error) => {
 
 process.on('unhandledRejection', async (reason, promise) => {
     log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    
-    // Envoyer l'erreur au error handler
-    if (errorHandler) {
+
+    // Seules les erreurs critiques méritent un dialogue
+    // Les rejections de l'auto-updater ou du réseau ne doivent pas bloquer l'UI
+    if (errorHandler && reason && reason.code &&
+        !['ENOTFOUND', 'ETIMEDOUT', 'ERR_NETWORK', 'ERR_CONNECTION_REFUSED'].includes(reason.code)) {
         await errorHandler.handleError(reason, { type: 'unhandledRejection' });
     }
 });

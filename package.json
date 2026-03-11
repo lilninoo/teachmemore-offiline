@@ -55,7 +55,8 @@
     "logs": "tail -f ~/.config/learnpress-offline/logs/*.log",
     "logs:win": "powershell Get-Content $env:APPDATA/learnpress-offline/logs/*.log -Wait",
     "reset-deps": "rimraf node_modules package-lock.json && npm install",
-    "rebuild-native": "npx electron-rebuild --force --parallel"
+    "rebuild-native": "npx electron-rebuild --force --parallel",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "engines": {
     "node": ">=16.0.0",
@@ -75,6 +76,7 @@
     "mocha": "^10.2.0",
     "nodemon": "^3.0.2",
     "nyc": "^15.1.0",
+    "png-to-ico": "^2.1.8",
     "sinon": "^17.0.0",
     "spectron": "^19.0.0"
   },
@@ -139,9 +141,10 @@
         "to": "database/schema.sql"
       }
     ],
+    "afterSign": "scripts/notarize.js",
     "mac": {
       "category": "public.app-category.education",
-      "icon": "build/icon.icns",
+      "icon": "build/icon.png",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
