@@ -8,30 +8,20 @@ window.loadPageContent = null;
 
 
 
-// ==================== CONFIGURATION WINSTON ====================
-const winston = require('winston');
-const path = require('path');
-
-// Configuration du logger Winston pour le renderer
-const logger = winston.createLogger({
-    level: 'debug',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
-            const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-            return `${timestamp} [RENDERER-${level.toUpperCase()}] ${message} ${metaStr}`;
-        })
-    ),
-    transports: [
-        // Console transport uniquement (les logs fichiers sont gérés par le main process)
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            )
-        })
-    ]
-});
+// ==================== CONFIGURATION LOGGER ====================
+// Winston n'est pas disponible dans le renderer (nodeIntegration: false).
+// Utiliser un logger léger basé sur console + IPC vers le main process.
+const logger = {
+    _format(level, message, meta) {
+        const ts = new Date().toISOString();
+        const metaStr = meta && Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+        return `${ts} [RENDERER-${level}] ${message}${metaStr}`;
+    },
+    debug(message, meta) { console.debug(this._format('DEBUG', message, meta)); },
+    info(message, meta) { console.info(this._format('INFO', message, meta)); },
+    warn(message, meta) { console.warn(this._format('WARN', message, meta)); },
+    error(message, meta) { console.error(this._format('ERROR', message, meta)); }
+};
 
 // Vérifier que les dépendances sont chargées
 if (typeof window.Utils === 'undefined') {
