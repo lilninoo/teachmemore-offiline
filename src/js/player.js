@@ -459,25 +459,11 @@ async loadVideo() {
         let videoPath = null;
         let isEncrypted = false;
         
-        // Vérifier si on a un chemin chiffré
+        // Vérifier si on a un chemin chiffré (fichier .enc)
         if (PlayerState.currentLesson.file_path_encrypted) {
-            console.log('[Player] Chemin chiffré détecté, déchiffrement...');
-            try {
-                // Déchiffrer le chemin
-                const decryptResult = await window.electronAPI.db.decryptPath(
-                    PlayerState.currentLesson.file_path_encrypted
-                );
-                if (decryptResult.success) {
-                    videoPath = decryptResult.path;
-                    isEncrypted = true;
-                } else {
-                    console.warn('[Player] Échec du déchiffrement du chemin');
-                    videoPath = PlayerState.currentLesson.file_path;
-                }
-            } catch (error) {
-                console.error('[Player] Erreur lors du déchiffrement:', error);
-                videoPath = PlayerState.currentLesson.file_path;
-            }
+            console.log('[Player] Fichier chiffré détecté');
+            videoPath = PlayerState.currentLesson.file_path_encrypted;
+            isEncrypted = true;
         } else if (PlayerState.currentLesson.file_path) {
             videoPath = PlayerState.currentLesson.file_path;
         } else if (PlayerState.currentLesson.video_url) {
@@ -489,19 +475,9 @@ async loadVideo() {
                 m.type === 'video' || m.mime_type?.startsWith('video/')
             );
             if (videoMedia) {
-                // Vérifier si le média a un chemin chiffré
                 if (videoMedia.path_encrypted) {
-                    try {
-                        const decryptResult = await window.electronAPI.db.decryptPath(
-                            videoMedia.path_encrypted
-                        );
-                        if (decryptResult.success) {
-                            videoPath = decryptResult.path;
-                            isEncrypted = true;
-                        }
-                    } catch (error) {
-                        console.error('[Player] Erreur déchiffrement média:', error);
-                    }
+                    videoPath = videoMedia.path_encrypted;
+                    isEncrypted = true;
                 } else {
                     videoPath = videoMedia.path || videoMedia.file_path || videoMedia.url;
                 }
@@ -557,14 +533,22 @@ async loadVideo() {
             console.log('[Player] Utilisation du SecureMediaHandler');
             streamUrl = await window.secureMediaHandler.createStreamUrl(videoPath, 'video/mp4');
         }
-        // Sinon, utiliser le chemin direct
-        else {
-            console.log('[Player] Utilisation du chemin direct');
-            if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
-                streamUrl = `file://${videoPath}`;
-            } else {
-                streamUrl = videoPath;
+        // Sinon, utiliser le stream sécurisé pour tout fichier local
+        else if (videoPath.startsWith('/') || videoPath.match(/^[A-Z]:\\/)) {
+            console.log('[Player] Fichier local, création stream sécurisé');
+            try {
+                const streamResult = await window.electronAPI.media.createStreamUrl(videoPath, 'video/mp4');
+                if (streamResult.success && streamResult.url) {
+                    streamUrl = streamResult.url;
+                } else {
+                    throw new Error(streamResult.error || 'Stream creation failed');
+                }
+            } catch (error) {
+                console.error('[Player] Erreur stream fichier local:', error);
+                throw new Error('Impossible de lire le fichier vidéo');
             }
+        } else {
+            streamUrl = videoPath;
         }
         
         console.log('[Player] URL de streaming finale:', streamUrl);
@@ -792,7 +776,13 @@ loadSubtitles(subtitlePath) {
                         <span class="separator">›</span>
                         <span id="player-lesson-name">Leçon</span>
                     </div>
+                    <div id="course-progress" class="course-progress-header">0% complété</div>
                     <div class="player-header-actions">
+                        <button class="btn-icon" onclick="playerManager.markCurrentLessonComplete()" title="Marquer comme terminé" id="mark-complete-btn">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+                            </svg>
+                        </button>
                         <button class="btn-icon" onclick="playerManager.toggleTheaterMode()" title="Mode cinéma">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M19 6H5c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H5V8h14v8z"/>
@@ -1212,10 +1202,36 @@ loadSubtitles(subtitlePath) {
             });
         });
         
+        // Volume button (mute toggle)
+        const volumeBtn = document.getElementById('volume-btn');
+        volumeBtn?.addEventListener('click', () => this.toggleMute());
+
+        // Seek indicators
+        document.getElementById('seek-backward')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.skipBackward();
+        });
+        document.getElementById('seek-forward')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.skipForward();
+        });
+
         // Quality menu
         const qualityBtn = document.getElementById('quality-btn');
         qualityBtn?.addEventListener('click', () => this.toggleQualityMenu());
-        
+
+        const qualityMenu = document.getElementById('quality-menu');
+        qualityMenu?.querySelectorAll('button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const quality = e.target.dataset.quality;
+                qualityMenu.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                const qualityText = document.getElementById('quality-text');
+                if (qualityText) qualityText.textContent = quality === 'auto' ? 'Auto' : quality;
+                this.toggleQualityMenu();
+            });
+        });
+
         // Content tabs
         document.querySelectorAll('.content-tab').forEach(tab => {
             tab.addEventListener('click', (e) => {
@@ -2718,6 +2734,8 @@ async downloadCertificate() {
    
    // Charger la leçon précédente
    async loadPreviousLesson() {
+       await this.saveProgress();
+
        const allLessons = [];
        PlayerState.sections.forEach(section => {
            const lessons = PlayerState.lessons.get(section.section_id) || [];
@@ -3123,27 +3141,22 @@ async downloadCertificate() {
        if (!PlayerState.currentLesson) return;
        
        try {
-           const progress = {
-               lesson_id: PlayerState.currentLesson.lesson_id,
-               course_id: PlayerState.currentCourse.course_id,
-               last_position: PlayerState.currentTime,
-               watched_segments: PlayerState.watchedSegments,
-               updated_at: new Date().toISOString()
-           };
-           
-           if (window.electronAPI.db.updateLessonProgress) {
-               await window.electronAPI.db.updateLessonProgress(progress);
+           const lessonId = PlayerState.currentLesson.lesson_id;
+           const duration = PlayerState.duration || 1;
+           const currentTime = PlayerState.currentTime || 0;
+           const progressPercent = Math.min(Math.round((currentTime / duration) * 100), 100);
+           const isCompleted = progressPercent >= 90;
+
+           await window.electronAPI.db.updateLessonProgress(lessonId, progressPercent, isCompleted);
+
+           if (isCompleted && !PlayerState.currentLesson.completed) {
+               PlayerState.currentLesson.completed = true;
+               this.buildNavigation();
+               if (PlayerState.lessons) {
+                   const completed = PlayerState.lessons.filter(l => l.completed).length;
+                   this.updateCourseProgress(completed, PlayerState.lessons.length);
+               }
            }
-           
-           // Mettre à jour la progression du cours
-           if (window.electronAPI.db.updateCourseProgress) {
-               await window.electronAPI.db.updateCourseProgress({
-                   course_id: PlayerState.currentCourse.course_id,
-                   last_lesson_id: PlayerState.currentLesson.lesson_id,
-                   last_accessed: new Date().toISOString()
-               });
-           }
-           
        } catch (error) {
            console.error('[Player] Erreur lors de la sauvegarde de la progression:', error);
        }
@@ -3162,22 +3175,37 @@ async downloadCertificate() {
        }
    },
    
+   // Marquer la leçon courante comme complétée (bouton UI)
+   async markCurrentLessonComplete() {
+       if (!PlayerState.currentLesson) return;
+       await this.markLessonAsCompleted();
+   },
+
    // Marquer la leçon comme complétée
    async markLessonAsCompleted() {
-       if (PlayerState.currentLesson.completed) return;
+       if (!PlayerState.currentLesson || PlayerState.currentLesson.completed) return;
        
        try {
-           if (window.electronAPI.db.markLessonAsCompleted) {
-               await window.electronAPI.db.markLessonAsCompleted(PlayerState.currentLesson.lesson_id);
-           }
+           const lessonId = PlayerState.currentLesson.lesson_id;
+           await window.electronAPI.db.updateLessonProgress(lessonId, 100, true);
            
            PlayerState.currentLesson.completed = true;
+           
+           // Mettre à jour l'icône du bouton
+           const btn = document.getElementById('mark-complete-btn');
+           if (btn) btn.style.color = '#4CAF50';
            
            // Mettre à jour la navigation
            this.buildNavigation();
            
+           // Calculer et afficher la progression globale
+           if (PlayerState.lessons) {
+               const completed = PlayerState.lessons.filter(l => l.completed).length;
+               this.updateCourseProgress(completed, PlayerState.lessons.length);
+           }
+           
            // Afficher une notification
-           showSuccess('Leçon complétée !');
+           if (typeof showSuccess === 'function') showSuccess('Leçon complétée !');
            
            // Analytics
            this.trackEvent('lesson_completed', {
@@ -3791,41 +3819,41 @@ async exitPlayer() {
    },
    
    // Obtenir l'icône de la leçon
-   getLessonIcon(type) {
-       const icons = {
-           video: '🎥',
-           document: '📄',
-           quiz: '❓',
-           exercise: '💻',
-           audio: '🎵',
-           presentation: '📊'
-       };
-       return icons[type] || '📚';
-   },
+getLessonIcon(type) {
+    const icons = {
+        video: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/><path d="M26 16.5L36 11V29L26 23.5" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>',
+        document: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        quiz: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        exercise: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M13 20L18 25L27 15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        audio: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M17 15L27 20L17 25V15Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+        presentation: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/></svg>'
+    };
+    return icons[type] || '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>';
+},
    
    // Obtenir l'icône de ressource
-   getResourceIcon(type) {
-       const icons = {
-           pdf: '📕',
-           zip: '📦',
-           code: '💻',
-           image: '🖼️',
-           excel: '📊',
-           word: '📝',
-           powerpoint: '📊'
-       };
-       
-       const ext = type.toLowerCase();
-       if (ext === 'pdf') return icons.pdf;
-       if (ext === 'zip' || ext === 'rar') return icons.zip;
-       if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return icons.image;
-       if (['xls', 'xlsx'].includes(ext)) return icons.excel;
-       if (['doc', 'docx'].includes(ext)) return icons.word;
-       if (['ppt', 'pptx'].includes(ext)) return icons.powerpoint;
-       if (['js', 'py', 'html', 'css', 'java', 'cpp'].includes(ext)) return icons.code;
-       
-       return '📎';
-   },
+    getResourceIcon(type) {
+        const icons = {
+            pdf: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            zip: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            code: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            image: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/></svg>',
+            excel: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M13 20L18 25L27 15" stroke="currentColor" stroke-width="2.2"/></svg>',
+            word: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>',
+            powerpoint: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/></svg>'
+        };
+        
+        const ext = type.toLowerCase();
+        if (ext === 'pdf') return icons.pdf;
+        if (ext === 'zip' || ext === 'rar') return icons.zip;
+        if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return icons.image;
+        if (['xls', 'xlsx'].includes(ext)) return icons.excel;
+        if (['doc', 'docx'].includes(ext)) return icons.word;
+        if (['ppt', 'pptx'].includes(ext)) return icons.powerpoint;
+        if (['js', 'py', 'html', 'css', 'java', 'cpp'].includes(ext)) return icons.code;
+        
+        return '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>';
+    },
    
    // Obtenir l'icône pour les fichiers
    getFileIcon(filename) {

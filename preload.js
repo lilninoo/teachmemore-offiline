@@ -1,5 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+// Multi-listener registry (supports multiple handlers per channel)
+const _eventListeners = {};
+
 // API sécurisée exposée au renderer
 contextBridge.exposeInMainWorld('electronAPI', {
   // Device & App Info
@@ -59,20 +62,20 @@ download: {
     cancelDownload: (downloadId) => 
       ipcRenderer.invoke('cancel-download', downloadId),
     pauseDownload: (downloadId) => 
-      ipcRenderer.invoke('pause-download', downloadId),
+      ipcRenderer.invoke('download:pauseDownload', downloadId),
     resumeDownload: (downloadId) => 
-      ipcRenderer.invoke('resume-download', downloadId),
+      ipcRenderer.invoke('download:resumeDownload', downloadId),
     getAllDownloads: () => 
       ipcRenderer.invoke('get-all-downloads'),
     getDownloadStatus: (downloadId) => 
       ipcRenderer.invoke('get-download-status', downloadId),
     removeFromHistory: (downloadId) => 
-      ipcRenderer.invoke('remove-from-history', downloadId)
+      ipcRenderer.invoke('download:removeFromHistory', downloadId)
 },
 
 // Ajouter aussi dans la section system si elle n'existe pas
 system: {
-    getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
+    getSystemInfo: () => ipcRenderer.invoke('system-get-info'),
     getStorageInfo: () => ipcRenderer.invoke('get-storage-info')
 },
   
@@ -138,6 +141,8 @@ system: {
       ipcRenderer.invoke('media:createStreamUrl', encryptedPath, mimeType),
     decryptFile: (encryptedPath, outputPath) => 
       ipcRenderer.invoke('media:decryptFile', encryptedPath, outputPath),
+    closeStream: (streamUrl) =>
+      ipcRenderer.invoke('media:closeStream', streamUrl),
     // Méthode existante pour compatibilité
     createStream: (filePath, mimeType) =>
       ipcRenderer.invoke('create-stream-url', { filePath, mimeType })
@@ -178,14 +183,19 @@ system: {
   // Certificate export
   exportCertificatePdf: (certificateData) => ipcRenderer.invoke('export-certificate-pdf', certificateData),
   
-  // Events listeners - Système d'événements amélioré
+  // Events listeners - Système d'événements amélioré (multi-listener support)
   on: (channel, callback) => {
     const validChannels = [
       // Auth events
       'auto-login-success',
       'login-success',
+      'force-logout',
+      'refresh-failed',
       'membership-status-changed',
       'membership-expiring-soon',
+      'connection-status-changed',
+      'store-warning',
+      'show-auto-reconnect',
       
       // Sync events
       'sync-courses',
@@ -198,6 +208,7 @@ system: {
       'download-error',
       'download-cancelled',
       'course-downloaded',
+      'download-manager:download-completed',
       
       // Navigation events
       'logout',
@@ -220,16 +231,22 @@ system: {
     ];
     
     if (validChannels.includes(channel)) {
-      // Remove any existing listeners to prevent memory leaks
-      ipcRenderer.removeAllListeners(channel);
-      // Add the new listener
-      ipcRenderer.on(channel, (event, ...args) => {
-        try {
-          callback(...args);
-        } catch (error) {
-          console.error(`Error in event handler for ${channel}:`, error);
-        }
-      });
+      if (!_eventListeners[channel]) {
+        _eventListeners[channel] = [];
+        ipcRenderer.on(channel, (event, ...args) => {
+          const handlers = _eventListeners[channel] || [];
+          for (const handler of handlers) {
+            try {
+              handler(...args);
+            } catch (error) {
+              console.error(`Error in event handler for ${channel}:`, error);
+            }
+          }
+        });
+      }
+      if (!_eventListeners[channel].includes(callback)) {
+        _eventListeners[channel].push(callback);
+      }
       
       return true;
     } else {
@@ -238,8 +255,13 @@ system: {
     }
   },
   
-  off: (channel) => {
-    ipcRenderer.removeAllListeners(channel);
+  off: (channel, callback) => {
+    if (callback && _eventListeners[channel]) {
+      _eventListeners[channel] = _eventListeners[channel].filter(cb => cb !== callback);
+    } else {
+      _eventListeners[channel] = [];
+      ipcRenderer.removeAllListeners(channel);
+    }
   },
   
   // Send events to main process

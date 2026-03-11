@@ -8,30 +8,13 @@ window.loadPageContent = null;
 
 
 
-// ==================== CONFIGURATION WINSTON ====================
-const winston = require('winston');
-const path = require('path');
-
-// Configuration du logger Winston pour le renderer
-const logger = winston.createLogger({
-    level: 'debug',
-    format: winston.format.combine(
-        winston.format.timestamp(),
-        winston.format.printf(({ timestamp, level, message, ...meta }) => {
-            const metaStr = Object.keys(meta).length ? JSON.stringify(meta, null, 2) : '';
-            return `${timestamp} [RENDERER-${level.toUpperCase()}] ${message} ${metaStr}`;
-        })
-    ),
-    transports: [
-        // Console transport uniquement (les logs fichiers sont gérés par le main process)
-        new winston.transports.Console({
-            format: winston.format.combine(
-                winston.format.colorize(),
-                winston.format.simple()
-            )
-        })
-    ]
-});
+// ==================== LOGGER LÉGER (renderer-safe) ====================
+const logger = {
+    info: (...args) => console.info('[APP]', ...args),
+    warn: (...args) => console.warn('[APP]', ...args),
+    error: (...args) => console.error('[APP]', ...args),
+    debug: (...args) => console.debug('[APP]', ...args)
+};
 
 // Vérifier que les dépendances sont chargées
 if (typeof window.Utils === 'undefined') {
@@ -61,20 +44,7 @@ const AppLogger = {
     }
 }
 
-// Rediriger console.log vers Winston
-const originalConsole = {
-    log: console.log,
-    error: console.error,
-    warn: console.warn,
-    info: console.info,
-    debug: console.debug
-};
-
-console.log = (...args) => logger.info(args.join(' '));
-console.error = (...args) => logger.error(args.join(' '));
-console.warn = (...args) => logger.warn(args.join(' '));
-console.info = (...args) => logger.info(args.join(' '));
-console.debug = (...args) => logger.debug(args.join(' '));
+// Keep original console methods (no redirection to avoid infinite loops)
 
 // ==================== ÉTAT GLOBAL ====================
 const AppState = {

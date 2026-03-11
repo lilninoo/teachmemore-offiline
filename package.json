@@ -239,9 +239,7 @@
         "MimeType": "x-scheme-handler/learnpress"
       }
     },
-    "appImage": {
-      "systemIntegration": "ask"
-    },
+  
     "protocols": [
       {
         "name": "LearnPress Protocol",

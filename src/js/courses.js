@@ -297,12 +297,12 @@ async function displayCourses(courses, container) {
         return;
     }
     
-    // IMPORTANT: Vérifier qu'on n'est pas déjà en train d'afficher
-    if (container.dataset.loading === 'true') {
-        console.warn('[Courses] Affichage déjà en cours, annulation');
-        return;
-    }
-    
+    console.log('[Courses] displayCourses appelée:', {
+        coursesCount: courses?.length,
+        containerId: container.id
+    });
+
+    // Reset loading flag to avoid deadlocks
     container.dataset.loading = 'true';
     
     try {
@@ -334,16 +334,16 @@ async function displayCourses(courses, container) {
         const endIndex = startIndex + CoursesState.coursesPerPage;
         const coursesToDisplay = filteredCourses.slice(startIndex, endIndex);
         
-        // Créer le conteneur
+        // Créer le conteneur avec un ID unique basé sur le container parent
+        const gridId = `courses-grid-${container.id || 'default'}`;
         container.innerHTML = `
-            <div class="courses-grid" id="courses-grid"></div>
+            <div class="courses-grid" id="${gridId}"></div>
             ${totalPages > 1 ? createPaginationHTML(totalPages) : ''}
         `;
         
-        // Afficher les cours
-        const grid = document.getElementById('courses-grid');
+        const grid = document.getElementById(gridId);
         if (!grid) {
-            console.error('[Courses] Grid non trouvé');
+            console.error('[Courses] Grid non trouvé:', gridId);
             return;
         }
         
@@ -365,34 +365,71 @@ async function displayCourses(courses, container) {
 
 
 async function loadCoursesPage() {
-    console.log('[Courses] Chargement de la page des cours');
+    console.log('[Courses] Chargement de la page Mes cours (téléchargés uniquement)');
     const container = document.getElementById('courses-list');
     if (!container) return;
-    
-    // Afficher le loader
+
     container.innerHTML = '<div class="loading"><div class="spinner"></div><p>Chargement...</p></div>';
-    
+
+    // Wire the "Télécharger un cours" button to navigate to Dashboard
+    const browseBtn = document.getElementById('browse-courses-btn');
+    if (browseBtn) {
+        browseBtn.onclick = () => {
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            const dashNav = document.querySelector('[data-page="dashboard"]');
+            if (dashNav) dashNav.classList.add('active');
+            if (window.showContentPage) window.showContentPage('dashboard');
+            if (window.loadPageContent) window.loadPageContent('dashboard');
+        };
+    }
+
     try {
-        // Utiliser les cours déjà en mémoire s'ils existent
-        let allCourses = [];
-        
-        // Si on a déjà des cours en mémoire, les utiliser
-        if (CoursesState.availableCourses.length > 0 || CoursesState.downloadedCourses.length > 0) {
-            allCourses = mergeCourseData(CoursesState.downloadedCourses, CoursesState.availableCourses);
-        } else {
-            // Sinon, charger depuis la base et l'API
-            const [localCourses, onlineCourses] = await Promise.all([
-                loadLocalCourses(),
-                loadOnlineCourses()
-            ]);
-            allCourses = mergeCourseData(localCourses, onlineCourses);
+        const localCourses = await loadLocalCourses();
+        CoursesState.downloadedCourses = localCourses;
+
+        // Update badge
+        const badge = document.getElementById('courses-count');
+        if (badge) badge.textContent = localCourses.length;
+
+        if (localCourses.length === 0) {
+            container.innerHTML = `
+                <div style="text-align:center;padding:60px 20px;">
+                    <svg width="80" height="80" viewBox="0 0 24 24" fill="var(--text-secondary)" style="margin-bottom:20px;opacity:0.4;">
+                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                    </svg>
+                    <h3 style="margin-bottom:10px;color:var(--text-secondary);">Aucun cours téléchargé</h3>
+                    <p style="color:var(--text-secondary);margin-bottom:20px;">Téléchargez des cours depuis le tableau de bord pour y accéder hors ligne.</p>
+                    <button class="btn btn-primary" id="go-to-dashboard-btn">
+                        Explorer les cours disponibles
+                    </button>
+                </div>
+            `;
+            const goBtn = document.getElementById('go-to-dashboard-btn');
+            if (goBtn) {
+                goBtn.onclick = () => {
+                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+                    const dashNav = document.querySelector('[data-page="dashboard"]');
+                    if (dashNav) dashNav.classList.add('active');
+                    if (window.showContentPage) window.showContentPage('dashboard');
+                    if (window.loadPageContent) window.loadPageContent('dashboard');
+                };
+            }
+            return;
         }
-        
-        // Afficher les cours
-        await displayCourses(allCourses, container);
-        
+
+        // Mark all as downloaded, decode thumbnail
+        const courses = localCourses.map(c => ({
+            ...c,
+            isDownloaded: true,
+            isLocal: true,
+            thumbnail: c.thumbnail || c.thumbnail_url || null
+        }));
+
+        console.log('[Courses] Cours téléchargés à afficher:', courses.length, courses.map(c => c.title));
+        await displayCourses(courses, container);
+
     } catch (error) {
-        console.error('[Courses] Erreur lors du chargement de la page des cours:', error);
+        console.error('[Courses] Erreur chargement Mes cours:', error);
         container.innerHTML = `
             <div class="message message-error">
                 <p>Erreur lors du chargement des cours</p>
@@ -592,9 +629,32 @@ async function createCourseCard(course) {
             <h3 class="course-title">${escapeHtml(course.title)}</h3>
             <p class="course-instructor">${escapeHtml(course.instructor_name || 'Instructeur')}</p>
             <div class="course-stats">
-                <span>📚 ${course.lessons_count || 0} leçons</span>
-                <span>⏱️ ${course.duration || 'Durée inconnue'}</span>
-                ${progressPercentage > 0 ? `<span class="course-progress-text">✓ ${progressPercentage}%</span>` : ''}
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                        <path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                        <line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    ${course.lessons_count || 0} leçons
+                </span>
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                        <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    ${course.duration || 'Durée inconnue'}
+                </span>
+                ${progressPercentage > 0 ? `
+                <span class="stat-with-icon course-progress-text">
+                    <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                        <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M13 20L18 25L27 15" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    ${progressPercentage}%
+                </span>
+                ` : ''}
             </div>
             ${course.rating ? `
                 <div class="course-rating">
@@ -677,14 +737,33 @@ function createRatingStars(rating) {
     const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
     
     let stars = '';
+    
+    // Étoiles pleines
     for (let i = 0; i < fullStars; i++) {
-        stars += '⭐';
+        stars += `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color: #FFD700;">
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+        </svg>`;
     }
+    
+    // Demi-étoile
     if (hasHalfStar) {
-        stars += '✨';
+        stars += `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color: #FFD700;">
+            <defs>
+                <linearGradient id="halfStar" x1="0%" y1="0%" x2="100%" y2="0%">
+                    <stop offset="50%" stop-color="currentColor"/>
+                    <stop offset="50%" stop-color="transparent"/>
+                </linearGradient>
+            </defs>
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="url(#halfStar)"/>
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" fill="none" stroke="currentColor" stroke-width="0.5"/>
+        </svg>`;
     }
+    
+    // Étoiles vides
     for (let i = 0; i < emptyStars; i++) {
-        stars += '☆';
+        stars += `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color: #FFD700; opacity: 0.3;">
+            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" stroke="currentColor" stroke-width="0.5"/>
+        </svg>`;
     }
     
     return `<span class="rating-stars">${stars}</span>`;
@@ -819,10 +898,38 @@ async function updateDownloadEstimate() {
         <div class="course-preview">
             <h4>${escapeHtml(course.title)}</h4>
             <div class="course-meta">
-                <span>👤 ${escapeHtml(course.instructor_name || 'Instructeur')}</span>
-                <span>📚 ${course.lessons_count || 0} leçons</span>
-                <span>⏱️ ${course.duration || 'Durée inconnue'}</span>
-                ${course.rating ? `<span>⭐ ${course.rating}/5</span>` : ''}
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-right: 4px;">
+                        <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+                        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                    </svg>
+                    ${escapeHtml(course.instructor_name || 'Instructeur')}
+                </span>
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                        <path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                        <line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        <line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    ${course.lessons_count || 0} leçons
+                </span>
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                        <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    ${course.duration || 'Durée inconnue'}
+                </span>
+                ${course.rating ? `
+                <span class="stat-with-icon">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color: #FFD700; margin-right: 4px;">
+                        <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                    </svg>
+                    ${course.rating}/5
+                </span>
+                ` : ''}
             </div>
             ${course.description ? `
                 <p class="course-description">${escapeHtml(course.description).substring(0, 200)}...</p>
@@ -1037,15 +1144,15 @@ function createDownloadElement(download) {
     el.dataset.downloadId = download.id;
     
     const statusIcon = {
-        pending: '⏳',
-        preparing: '🔄',
-        creating_package: '📦',
-        downloading: '⬇️',
-        completed: '✅',
-        error: '❌',
-        cancelled: '🚫'
-    }[download.status] || '⏳';
-    
+        pending: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        preparing: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M12 4v8l4 4" stroke="currentColor" stroke-width="2"/></svg>',
+        creating_package: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="4" y="4" width="16" height="16" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 8h8M8 12h8M8 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        downloading: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 17v4h14v-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        completed: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#28a745"><circle cx="12" cy="12" r="10" stroke="#28a745" stroke-width="2"/><path d="M8 12l3 3 6-6" stroke="#28a745" stroke-width="2" stroke-linecap="round"/></svg>',
+        error: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#dc3545"><circle cx="12" cy="12" r="10" stroke="#dc3545" stroke-width="2"/><path d="M12 8v4m0 4h.01" stroke="#dc3545" stroke-width="2" stroke-linecap="round"/></svg>',
+        cancelled: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><path d="M8 8l8 8M16 8l-8 8" stroke="currentColor" stroke-width="2"/></svg>'
+    }[download.status] || '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>';
+        
     const statusText = {
         pending: 'En attente',
         preparing: 'Préparation',
@@ -1141,14 +1248,30 @@ window.createCourseCard = function(course) {
                 </div>
                 ` : ''}
                 ${isExpired ? '<div class="course-expired-badge">Expiré</div>' : ''}
-                ${isDownloaded ? '<div class="course-downloaded-badge" title="Cours téléchargé">💾</div>' : ''}
-            </div>
+                ${isDownloaded ? '<div class="course-downloaded-badge" title="Cours téléchargé"><svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M20 8V26" stroke="white" stroke-width="2.2" stroke-linecap="round"/><path d="M12 19L20 27L28 19" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 32H32" stroke="white" stroke-width="2.2" stroke-linecap="round"/></svg></div>' : ''}            </div>
             <div class="card-body">
                 <h3 class="course-title">${escapeHtml(course.title)}</h3>
                 <p class="course-instructor">${escapeHtml(course.instructor_name || 'Instructeur')}</p>
                 <div class="course-meta">
-                    <span>📚 ${course.lessons_count || 0} leçons</span>
-                    ${course.duration ? `<span>• ⏱️ ${course.duration}</span>` : ''}
+                    <span class="stat-with-icon">
+                        <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                            <path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.5"/>
+                            <path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                            <line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        ${course.lessons_count || 0} leçons
+                    </span>
+                    ${course.duration ? `
+                    <span class="stat-with-icon">
+                        <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                            <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                            <path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        ${course.duration}
+                    </span>
+                    ` : ''}
                 </div>
                 <div class="course-actions">
                     ${isDownloaded ? `
@@ -1406,11 +1529,39 @@ function showCourseDetails(course) {
                          alt="${escapeHtml(course.title)}" 
                          style="width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; margin-bottom: 16px;">
                     
-                    <div class="course-meta" style="display: flex; gap: 16px; margin-bottom: 16px;">
-                        <span>👤 ${escapeHtml(course.instructor_name || 'Instructeur')}</span>
-                        <span>📚 ${course.lessons_count || 0} leçons</span>
-                        <span>⏱️ ${course.duration || 'Durée inconnue'}</span>
-                        ${course.rating ? `<span>⭐ ${course.rating}/5</span>` : ''}
+                    <div class="course-meta" style="display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap;">
+                        <span class="stat-with-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-right: 4px;">
+                                <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.5"/>
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                            ${escapeHtml(course.instructor_name || 'Instructeur')}
+                        </span>
+                        <span class="stat-with-icon">
+                            <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                                <path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.5"/>
+                                <path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                                <line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                                <line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                            ${course.lessons_count || 0} leçons
+                        </span>
+                        <span class="stat-with-icon">
+                            <svg width="14" height="14" viewBox="0 0 40 40" fill="none" style="margin-right: 4px;">
+                                <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                                <path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            ${course.duration || 'Durée inconnue'}
+                        </span>
+                        ${course.rating ? `
+                        <span class="stat-with-icon">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="color: #FFD700; margin-right: 4px;">
+                                <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                            </svg>
+                            ${course.rating}/5
+                        </span>
+                        ` : ''}
                     </div>
                     
                     ${course.description ? `
@@ -1525,6 +1676,7 @@ window.downloadSingleCourse = downloadSingleCourse;
 window.deleteCourse = deleteCourse;
 window.updateCourse = updateCourse;
 window.openCourse = openCourse;
+window.openCoursePlayer = openCourse;
 window.loadCourses = loadCourses;
 window.displayCourses = displayCourses; // Ajouter cette ligne
 
@@ -1540,9 +1692,10 @@ window.initializeCourses = function() {
     console.log('[Courses] Initialisation du module courses');
     
     // S'assurer que les fonctions sont disponibles
-    if (!window.loadCoursesPage) {
-        window.loadCoursesPage = async function() {
-            console.log('[Courses] loadCoursesPage appelée depuis courses.js');
+    window.loadCoursesPage = loadCoursesPage;
+    if (false) {
+        window._loadCoursesPageFallback = async function() {
+            console.log('[Courses] loadCoursesPage fallback (désactivé)');
             const container = document.getElementById('courses-list');
             if (!container) {
                 console.error('[Courses] Container courses-list non trouvé');

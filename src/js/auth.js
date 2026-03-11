@@ -377,7 +377,7 @@ function setupLoginForm() {
                 
                 let errorMessage = result.error || 'Erreur de connexion';
                 
-                if (result.code === 'no_active_membership') {
+                if (result.code === 'no_active_membership' || result.code === 'no_membership') {
                     errorMessage = 'Un abonnement actif est requis pour utiliser l\'application';
                 } else if (result.status === 404) {
                     errorMessage = 'API non trouvée. Vérifiez l\'URL du site et que le plugin est activé';
@@ -541,6 +541,28 @@ window.debugAuth.simulateLoginSuccess = function() {
     }
     console.log('%c✅ Événement login-success simulé', 'background: green; color: white; padding: 5px;');
 };
+
+// Écouter les échecs d'authentification depuis le main process
+if (window.electronAPI) {
+    window.electronAPI.on('force-logout', (data) => {
+        AuthLogger.warn('Force logout reçu:', data);
+        window.AuthState.isLoggedIn = false;
+        window.AuthState.user = null;
+        window.AuthState.apiUrl = null;
+        showLoginPage();
+        showLoginError(data.message || 'Votre session a expiré. Veuillez vous reconnecter.');
+    });
+
+    window.electronAPI.on('refresh-failed', (data) => {
+        AuthLogger.warn('Refresh token échoué:', data);
+        if (!data.canRetry) {
+            window.AuthState.isLoggedIn = false;
+            window.AuthState.user = null;
+            showLoginPage();
+            showLoginError('Votre session a expiré. Veuillez vous reconnecter.');
+        }
+    });
+}
 
 // Export global
 window.AuthManager = {

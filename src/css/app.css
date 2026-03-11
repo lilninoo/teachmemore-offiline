@@ -39,6 +39,7 @@
   --transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+
 /* Mode sombre */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -163,6 +164,9 @@ a:hover {
     z-index: 90;
 }
 
+.form-group:has(#api-url) {
+  display: none;
+}
 
 .login-container {
   display: flex;
@@ -721,6 +725,17 @@ a:hover {
   padding: 0 20px;
   gap: 20px;
   box-shadow: var(--shadow);
+}
+
+.course-progress-header {
+  font-size: 12px;
+  color: var(--accent-color);
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 4px 12px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  margin-left: auto;
 }
 
 .player-main {
@@ -1522,12 +1537,25 @@ a:hover {
 
 .progress-details {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: 12px;
+    gap: 20px;
+    margin: 16px 0;
     font-size: 14px;
     color: var(--text-secondary);
-    margin-bottom: 16px;
 }
+
+.progress-details .stat-with-icon {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.progress-details .stat-with-icon svg {
+    flex-shrink: 0;
+    stroke: currentColor;
+}
+
 
 .progress-actions {
     display: flex;
@@ -1867,14 +1895,7 @@ body {
     background: linear-gradient(90deg, var(--success-color), #22a860);
 }
 
-.progress-details {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    font-size: 14px;
-    color: var(--text-secondary);
-    margin-bottom: 16px;
-}
+
 
 .progress-actions {
     display: flex;
@@ -1969,4 +1990,91 @@ body {
 .sync-status.syncing {
     border-color: var(--primary-color);
     background: var(--primary-light);
+}
+
+/* ==================== ICÔNES SVG ==================== */
+.stat-with-icon {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.stat-with-icon svg {
+    display: inline-block;
+    vertical-align: middle;
+    stroke: currentColor;
+}
+
+.course-downloaded-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 12px;
+    background: var(--success-color);
+}
+
+.course-downloaded-badge svg {
+    stroke: white;
+}
+
+.lesson-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+}
+
+.lesson-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke: currentColor;
+}
+
+.resource-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+}
+
+.resource-icon svg {
+    width: 20px;
+    height: 20px;
+    stroke: currentColor;
+}
+
+/* Couleur cyan pour les icônes */
+.stat-with-icon svg,
+.lesson-icon svg,
+.resource-icon svg {
+    stroke: #00E6C8;
+}
+
+.course-progress-text svg {
+    stroke: var(--success-color);
+}
+
+/* Pour le mode sombre */
+@media (prefers-color-scheme: dark) {
+    .stat-with-icon svg,
+    .lesson-icon svg,
+    .resource-icon svg {
+        stroke: #00E6C8;
+    }
+}
+/* Pour les petits écrans */
+@media (max-width: 768px) {
+    .progress-details {
+        gap: 12px;
+        font-size: 13px;
+    }
+    
+    .progress-details .stat-with-icon svg {
+        width: 14px;
+        height: 14px;
+    }
 }

@@ -281,12 +281,51 @@
                 </div>
                 
                 <div class="progress-details">
-                    <span>📚 ${course.progress.completed_lessons || 0}/${course.progress.total_lessons || course.lessons_count || 0} leçons</span>
-                    ${course.duration ? `<span>⏱️ ${formatTimeSpent(course.duration, progress)}</span>` : ''}
-                    ${course.last_accessed ? `<span>📅 ${formatLastAccessed(course.last_accessed)}</span>` : ''}
-                    ${course.rating && isCompleted ? `<span>⭐ ${course.rating}/5</span>` : ''}
+                    <span class="stat-with-icon">
+                        <svg width="16" height="16" viewBox="0 0 40 40" fill="none" style="margin-right: 6px;">
+                            <path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.5"/>
+                            <path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                            <line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                            <line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                        ${course.progress.completed_lessons || 0}/${course.progress.total_lessons || course.lessons_count || 0} leçons
+                    </span>
+                    
+                    ${course.duration ? `
+                    <span class="stat-with-icon">
+                        <svg width="16" height="16" viewBox="0 0 40 40" fill="none" style="margin-right: 6px;">
+                            <circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.5"/>
+                            <path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        ${formatTimeSpent(course.duration, progress)}
+                    </span>
+                    ` : ''}
+                    
+                    ${course.last_accessed ? `
+                    <span class="stat-with-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="margin-right: 6px;">
+                            <rect x="3" y="4" width="18" height="18" rx="2" stroke="currentColor" stroke-width="1.5"/>
+                            <line x1="8" y1="2" x2="8" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="16" y1="2" x2="16" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.5"/>
+                            <circle cx="12" cy="16" r="1" fill="currentColor"/>
+                            <circle cx="16" cy="16" r="1" fill="currentColor"/>
+                            <circle cx="8" cy="16" r="1" fill="currentColor"/>
+                        </svg>
+                        ${formatLastAccessed(course.last_accessed)}
+                    </span>
+                    ` : ''}
+                    
+                    ${course.rating && isCompleted ? `
+                    <span class="stat-with-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" style="color: #FFD700; margin-right: 6px;">
+                            <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/>
+                        </svg>
+                        ${course.rating}/5
+                    </span>
+                    ` : ''}
                 </div>
-                
                 <div class="progress-actions">
                     ${!isCompleted ? `
                         <button class="btn btn-primary btn-sm continue-course-btn">
