@@ -113,12 +113,6 @@ process.on('uncaughtException', async (error) => {
 
 process.on('unhandledRejection', async (reason, promise) => {
     log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    
-    // Envoyer l'erreur au error handler
-    if (errorHandler) {
-        await errorHandler.handleError(reason, { type: 'unhandledRejection' });
-    }
 });
 
 // ==================== VARIABLES GLOBALES ====================
