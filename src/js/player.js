@@ -3819,41 +3819,41 @@ async exitPlayer() {
    },
    
    // Obtenir l'icône de la leçon
-   getLessonIcon(type) {
-       const icons = {
-           video: '🎥',
-           document: '📄',
-           quiz: '❓',
-           exercise: '💻',
-           audio: '🎵',
-           presentation: '📊'
-       };
-       return icons[type] || '📚';
-   },
+getLessonIcon(type) {
+    const icons = {
+        video: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/><path d="M26 16.5L36 11V29L26 23.5" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/></svg>',
+        document: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+        quiz: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M20 13V20L25 24" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        exercise: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M13 20L18 25L27 15" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+        audio: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M17 15L27 20L17 25V15Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+        presentation: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/></svg>'
+    };
+    return icons[type] || '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>';
+},
    
    // Obtenir l'icône de ressource
-   getResourceIcon(type) {
-       const icons = {
-           pdf: '📕',
-           zip: '📦',
-           code: '💻',
-           image: '🖼️',
-           excel: '📊',
-           word: '📝',
-           powerpoint: '📊'
-       };
-       
-       const ext = type.toLowerCase();
-       if (ext === 'pdf') return icons.pdf;
-       if (ext === 'zip' || ext === 'rar') return icons.zip;
-       if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return icons.image;
-       if (['xls', 'xlsx'].includes(ext)) return icons.excel;
-       if (['doc', 'docx'].includes(ext)) return icons.word;
-       if (['ppt', 'pptx'].includes(ext)) return icons.powerpoint;
-       if (['js', 'py', 'html', 'css', 'java', 'cpp'].includes(ext)) return icons.code;
-       
-       return '📎';
-   },
+    getResourceIcon(type) {
+        const icons = {
+            pdf: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="15" x2="24" y2="15" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            zip: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="20" x2="24" y2="20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            code: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/><path d="M8 36C8 33.8 9.8 32 12 32H30" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><line x1="14" y1="25" x2="20" y2="25" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+            image: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/></svg>',
+            excel: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="13" stroke="currentColor" stroke-width="2.2"/><path d="M13 20L18 25L27 15" stroke="currentColor" stroke-width="2.2"/></svg>',
+            word: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>',
+            powerpoint: '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><rect x="3" y="9" width="23" height="22" rx="4" stroke="currentColor" stroke-width="2.2"/></svg>'
+        };
+        
+        const ext = type.toLowerCase();
+        if (ext === 'pdf') return icons.pdf;
+        if (ext === 'zip' || ext === 'rar') return icons.zip;
+        if (['jpg', 'jpeg', 'png', 'gif'].includes(ext)) return icons.image;
+        if (['xls', 'xlsx'].includes(ext)) return icons.excel;
+        if (['doc', 'docx'].includes(ext)) return icons.word;
+        if (['ppt', 'pptx'].includes(ext)) return icons.powerpoint;
+        if (['js', 'py', 'html', 'css', 'java', 'cpp'].includes(ext)) return icons.code;
+        
+        return '<svg width="16" height="16" viewBox="0 0 40 40" fill="none"><path d="M8 8H26C28.2 8 30 9.8 30 12V32C30 34.2 28.2 36 26 36H8V8Z" stroke="currentColor" stroke-width="2.2"/></svg>';
+    },
    
    // Obtenir l'icône pour les fichiers
    getFileIcon(filename) {
