@@ -113,10 +113,11 @@ process.on('uncaughtException', async (error) => {
 
 process.on('unhandledRejection', async (reason, promise) => {
     log.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-    
-    // Envoyer l'erreur au error handler
-    if (errorHandler) {
+
+    // Seules les erreurs critiques méritent un dialogue
+    // Les rejections de l'auto-updater ou du réseau ne doivent pas bloquer l'UI
+    if (errorHandler && reason && reason.code &&
+        !['ENOTFOUND', 'ETIMEDOUT', 'ERR_NETWORK', 'ERR_CONNECTION_REFUSED'].includes(reason.code)) {
         await errorHandler.handleError(reason, { type: 'unhandledRejection' });
     }
 });
@@ -797,27 +798,7 @@ function createMainWindow() {
     mainWindow.on('closed', () => {
         mainWindow = null;
     });
-
-    mainWindow.webContents.on('render-process-gone', (event, details) => {
-        log.error('Renderer process crashed:', details.reason);
-        if (details.reason === 'crashed' || details.reason === 'oom') {
-            log.info('Reloading after renderer crash...');
-            setTimeout(() => {
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.loadFile(path.join(__dirname, 'src/index.html'));
-                }
-            }, 1000);
-        }
-    });
-
-    mainWindow.webContents.on('unresponsive', () => {
-        log.warn('Renderer became unresponsive');
-    });
-
-    mainWindow.webContents.on('responsive', () => {
-        log.info('Renderer is responsive again');
-    });
-
+    
     if (isDev) {
         mainWindow.webContents.openDevTools();
     }
@@ -1122,7 +1103,9 @@ app.whenReady().then(async () => {
         
         // Vérifier les mises à jour en production
         if (!isDev) {
-            autoUpdater.checkForUpdatesAndNotify();
+            autoUpdater.checkForUpdatesAndNotify().catch((err) => {
+                log.warn('Auto-update check failed (non-critical):', err.message || err);
+            });
         }
         
         log.info('Application initialisée avec succès');
@@ -1329,7 +1312,6 @@ if (process.env.NODE_ENV === 'test') {
         initializeApp
     };
 }
-
 
 
 
