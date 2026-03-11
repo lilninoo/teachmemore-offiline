@@ -55,7 +55,9 @@
     "logs": "tail -f ~/.config/learnpress-offline/logs/*.log",
     "logs:win": "powershell Get-Content $env:APPDATA/learnpress-offline/logs/*.log -Wait",
     "reset-deps": "rimraf node_modules package-lock.json && npm install",
-    "rebuild-native": "npx electron-rebuild --force --parallel"
+    "rebuild-native": "npx electron-rebuild --force --parallel",
+    "generate-icons": "node scripts/generate-icons.js",
+    "prebuild": "npm run generate-icons"
   },
   "engines": {
     "node": ">=16.0.0",
@@ -222,6 +224,8 @@
       "shortcutName": "LearnPress Offline",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerSidebar": "build/installerSidebar.bmp",
       "installerLanguages": ["fr_FR", "en_US"],
       "license": "LICENSE.md",
       "warningsAsErrors": false,
